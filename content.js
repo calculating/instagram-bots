@@ -1,20 +1,23 @@
 console.log("go");
-function followAll() {
-var follow
-console.log(follow)
-	follow = document.getElementsByClassName("sqdOP  L3NKy    _8A5w5    ");
-  if (follow.length > 1) {
-    for (var i = 2, e = follow.length; i < e; i++) {
-  		console.log(follow[i])
-  		follow[i].click();
-  		for (n=0; n<10; n++) {
-  			console.log(n);
-  		}
-  		var followconfirm = document.getElementsByClassName("aOOlW -Cab_   ");
-  		followconfirm[0].click();
-	}
-  } else {
-    setTimeout(followAll, 500);
-  }
+var unfollow;
+var confirm;
+var unfollowed;
+function unfollow() {
+    console.log('eee');
+    if (document.getElementsByClassName("sqdOP  L3NKy    _8A5w5    ").length > 1) {
+        console.log('unfollowing');
+        unfollow = document.querySelector("._1XyCr").querySelector(".sqdOP,  .L3NKy,   ._8A5w5    ");
+        unfollow.style.backgroundColor = "red";
+        unfollow.click();
+
+        confirm = document.querySelector(".aOOlW, .-Cab_   ");
+        confirm.style.backgroundColor = "orange";
+        confirm.click();
+
+        unfollowed = document.querySelector("._1XyCr").querySelector(".Igw0E, .rBNOH, .eGOV_, .ybXk5, ._4EzTm, .XfCBB, .HVWg4");
+        unfollowed.parentNode.removeChild(unfollowed);
+    }
 }
-followAll();
+//window.open('https://www.instagram.com/zacksjerryrig/', '_self');
+window.open('http://example.com/', '_blank', 'width = 5, height = 5, left = 100000, top = 100000'); 
+var myVar = setInterval(unfollow, 5000);
