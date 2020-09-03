@@ -37,6 +37,7 @@ puppeteer.launch({
   })
   console.log('Dimensions:', dimensions)
 
-  // await page.screenshot({ path: 'screenshot.png' })
+  // console.log(await page.cookies())
+  // await page.screenshot({ path: 'data/test-screenshot.png' })
   await browser.close()
 })
