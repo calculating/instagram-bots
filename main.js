@@ -1,14 +1,27 @@
 const puppeteer = require('puppeteer-extra')
-
+const puppeteerDevices = require('puppeteer').devices
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
-puppeteer.use(StealthPlugin())
+const UserAgentOverride = require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')
 
-puppeteer.launch({ headless: true }).then(async browser => {
+let stealth = StealthPlugin()
+stealth.enabledEvasions.delete('user-agent-override')
+puppeteer.use(stealth)
+
+puppeteer.use(UserAgentOverride({
+  userAgent: puppeteerDevices['Pixel 2'].userAgent.replace(/Chrome\/[^ ]+/, 'Chrome/85.0.4182.0'),
+  locale: 'en-US,en;q=0.9',
+  platform: 'Linux aarch64',
+}))
+
+puppeteer.launch({
+  headless: false,
+  defaultViewport: puppeteerDevices['Pixel 2'].viewport,
+}).then(async browser => {
   console.log('Opening Instagram')
 
   let page = await browser.newPage()
-  await page.goto('https://www.instagram.com')
-  await page.waitFor(2000)
+  await page.goto('https://www.instagram.com/')
+  await page.waitFor(2000 * 1000)
 
   let dimensions = await page.evaluate(() => {
     return {
@@ -24,6 +37,6 @@ puppeteer.launch({ headless: true }).then(async browser => {
   })
   console.log('Dimensions:', dimensions)
 
-  // await page.screenshot({ path: 'screenshot.png', fullPage: true })
+  // await page.screenshot({ path: 'screenshot.png' })
   await browser.close()
 })
