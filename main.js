@@ -4,6 +4,7 @@ const puppeteer = require('puppeteer-extra')
 const puppeteerDevices = require('puppeteer').devices
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 const UserAgentOverride = require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')
+const ReplPlugin = require('puppeteer-extra-plugin-repl')
 
 let database = {
   username: '',
@@ -81,6 +82,8 @@ puppeteer.use(UserAgentOverride({
   locale: 'en-US,en;q=0.9',
   platform: 'Linux aarch64',
 }))
+
+puppeteer.use(ReplPlugin())
 
 puppeteer.launch({
   headless: false,
