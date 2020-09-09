@@ -32,43 +32,43 @@ let random = (min, max) => min + (max - min) * (Math.random() + Math.random() + 
 let pageEliminatePopUps = async page => {
   let [buttonRefuseWebApp] = await page.$x('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]')
   if (buttonRefuseWebApp) {
-    buttonRefuseWebApp.tap()
+    await buttonRefuseWebApp.tap()
     await sleep(random(1000, 1500))
   }
 
   let [buttonRefuseNotifications] = await page.$x('//*[@role="dialog"]//div[div/h2[contains(., "Turn on Notifications")]]/div/button[contains(., "Not Now")]')
   if (buttonRefuseNotifications) {
-    buttonRefuseNotifications.tap()
+    await buttonRefuseNotifications.tap()
     await sleep(random(1000, 1500))
   }
 
   let [buttonRefuseApp] = await page.$x('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now")]')
   if (buttonRefuseApp) {
-    buttonRefuseApp.tap()
+    await buttonRefuseApp.tap()
     await sleep(random(1000, 1500))
   }
 }
 
 let pageGoToSelfProfile = async (page, username) => {
   let [link] = await page.$x(`//div[position()=5]/a[@href="/${username}/"]`)
-  link.tap()
+  await link.tap()
   await sleep(random(2000, 3000))
 }
 
 let pageGoToFollowingFromProfile = async (page, username) => {
   let [link] = await page.$x(`//ul/li[position()=3]/a[@href="/${username}/following/"]`)
-  link.tap()
+  await link.tap()
   await sleep(random(2000, 3000))
 }
 
 let pageUnfollowFirstAtFollowing = async page => {
   let [button] = await page.$x('//div/button[text()="Following"]')
   if (button) {
-    button.tap()
+    await button.tap()
     await sleep(random(1000, 1500))
 
     let [buttonUnfollow] = await page.$x('//*[@role="dialog"]//div/button[text()="Unfollow"]')
-    buttonUnfollow.tap()
+    await buttonUnfollow.tap()
     await sleep(random(2000, 3000))
   }
 }
@@ -106,7 +106,7 @@ puppeteer.launch({
 
   let [buttonLogInPage] = await page.$x('//button[contains(., "Log In")]')
   if (buttonLogInPage) {
-    buttonLogInPage.tap()
+    await buttonLogInPage.tap()
     await sleep(random(1000, 1500))
 
     await page.type('input[name="username"]', database.username, { delay: random(75, 100) })
@@ -116,12 +116,12 @@ puppeteer.launch({
     await sleep(random(500, 1000))
 
     let [buttonLogIn] = await page.$x('//button[contains(., "Log In")]')
-    buttonLogIn.tap()
+    await buttonLogIn.tap()
     await sleep(random(5000, 7500))
 
     let [buttonSaveInfo] = await page.$x('//button[contains(., "Save Info")]')
     if (buttonSaveInfo) {
-      buttonSaveInfo.tap()
+      await buttonSaveInfo.tap()
       await sleep(random(2000, 3000))
     }
   }
