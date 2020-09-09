@@ -25,6 +25,10 @@ let database = {
   },
 }
 
+let shouldLikePost = username => {
+  return /^[a-z]{6,16}$/.test(username)
+}
+
 let sleep = time => new Promise(resolve => setTimeout(resolve, time))
 
 let random = (min, max) => min + (max - min) * (Math.random() + Math.random() + Math.random()) / 3
@@ -127,6 +131,40 @@ puppeteer.launch({
   }
 
   await pageEliminatePopUps(page)
+
+  // await page.repl()
+
+  let lastUsername = null
+  while (true) {
+    let posts = await page.$x('//article[@role="presentation"][div/section//button//*[@aria-label="Like"]]')
+    let post = null
+    let likeButton = null
+    for (let currentPost of posts) {
+      let [currentLikeButton] = await currentPost.$x('div/section//button//*[@aria-label="Like"]')
+      let { y } = await currentLikeButton.boundingBox()
+      if (y > 600) break
+      post = currentPost
+      likeButton = currentLikeButton
+    }
+
+    if (post) {
+      let [usernameLink] = await post.$x('header//a')
+      let username = await usernameLink.evaluate(node => node.innerHTML)
+      console.log(`Found post by ${username}`)
+
+      if (lastUsername !== username && shouldLikePost(username)) {
+        console.log('Post liked')
+        lastUsername = username
+        await likeButton.tap()
+        await sleep(random(2000, 3000))
+      }
+    }
+
+    await page.mouse.wheel({ deltaY: random(300, 500) })
+    await sleep(random(2000, 3000))
+  }
+
+  await sleep(48 * 60 * 60e3) // sleep forever
 
   await pageGoToSelfProfile(page, database.username)
 
