@@ -46,11 +46,27 @@ let pageEliminatePopUps = async page => {
     await sleep(random(1000, 1500))
   }
 
-  let [buttonRefuseApp] = await page.$x('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now")]')
+  let [buttonRefuseApp] = await page.$x('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now") or //*[@aria-label="Close"]]')
   if (buttonRefuseApp) {
     await buttonRefuseApp.tap()
     await sleep(random(1000, 1500))
   }
+}
+
+let pageBackButton = async page => {
+  let [button] = await page.$x('//header//*[@aria-label="Back"]')
+  await button.tap()
+  await sleep(random(2000, 3000))
+}
+
+let pagePostComment = async (page, content) => {
+  let [textarea] = await page.$x('//form/textarea[contains(@aria-label, "Add a comment")]')
+  await textarea.type(content, { delay: random(75, 100) })
+  await sleep(random(1000, 1500))
+
+  let [button] = await page.$x('//form/button[text()="Post"]')
+  await button.tap()
+  await sleep(random(2000, 3000))
 }
 
 let pageGoToSelfProfile = async (page, username) => {
@@ -73,6 +89,14 @@ let pageUnfollowFirstAtFollowing = async page => {
 
     let [buttonUnfollow] = await page.$x('//*[@role="dialog"]//div/button[text()="Unfollow"]')
     await buttonUnfollow.tap()
+    await sleep(random(2000, 3000))
+  }
+}
+
+let pageFollowAtProfile = async page => {
+  let [button] = await page.$x('//span/button[text()="Follow" or text()="Follow Back"]')
+  if (button) {
+    await button.tap()
     await sleep(random(2000, 3000))
   }
 }
@@ -132,6 +156,8 @@ puppeteer.launch({
 
   await pageEliminatePopUps(page)
 
+  // await sleep(48 * 60 * 60e3) // sleep forever
+
   // await page.repl()
 
   let lastUsername = null
@@ -139,16 +165,19 @@ puppeteer.launch({
     let posts = await page.$x('//article[@role="presentation"][div/section//button//*[@aria-label="Like"]]')
     let post = null
     let likeButton = null
+    let commentButton = null
     for (let currentPost of posts) {
       let [currentLikeButton] = await currentPost.$x('div/section//button//*[@aria-label="Like"]')
+      let [currentCommentButton] = await currentPost.$x('div/section//button//*[@aria-label="Comment"]')
       let { y } = await currentLikeButton.boundingBox()
       if (y > 600) break
       post = currentPost
       likeButton = currentLikeButton
+      commentButton = currentCommentButton
     }
 
     if (post) {
-      let [usernameLink] = await post.$x('header//a')
+      let [usernameLink] = await post.$x('header/div/div/div/a')
       let username = await usernameLink.evaluate(node => node.innerHTML)
       console.log(`Found post by ${username}`)
 
@@ -157,6 +186,16 @@ puppeteer.launch({
         lastUsername = username
         await likeButton.tap()
         await sleep(random(2000, 3000))
+
+        if (Math.random() < 0.5) {
+          await commentButton.tap()
+          await sleep(random(2000, 3000))
+
+          await pagePostComment(page, 'yes')
+
+          await pageBackButton(page)
+          await sleep(random(2000, 3000))
+        }
       }
     }
 
