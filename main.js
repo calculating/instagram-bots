@@ -83,6 +83,20 @@ let pagePostDelete = async page => {
   await sleep(random(2000, 3000))
 }
 
+let pagePostDownloadImage = async (page, path) => {
+  let [img] = await page.$x('//article/div/div[@role="button"]//img')
+  await img.screenshot({ path, omitBackground: true })
+
+  let [caption] = await page.$x('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span')
+  if (!caption) return null
+
+  let [buttonMore] = await caption.$x('span/button[text()="more"]')
+  if (buttonMore)
+    await buttonMore.tap()
+
+  return caption.evaluate(node => node.innerText)
+}
+
 let pageGoToSelfProfile = async (page, username) => {
   let [link] = await page.$x(`//div[position()=5]/a[@href="/${username}/"]`)
   await link.tap()
@@ -144,7 +158,8 @@ let pageCreatePost = async (page, path, caption) => {
   await buttonNext.tap()
   await sleep(random(1000, 1500))
 
-  await page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
+  if (caption)
+    await page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
   await sleep(random(500, 1000))
 
   let [buttonShare] = await page.$x('//div/button[text()="Share"]')
