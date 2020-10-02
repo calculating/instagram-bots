@@ -69,6 +69,20 @@ let pagePostComment = async (page, content) => {
   await sleep(random(2000, 3000))
 }
 
+let pagePostDelete = async page => {
+  let [buttonOptions] = await page.$x('//*[@aria-label="More options"]')
+  buttonOptions.tap()
+  await sleep(random(1000, 1500))
+
+  let [buttonDelete] = await page.$x('//div/button[text()="Delete"]')
+  buttonDelete.tap()
+  await sleep(random(1000, 1500))
+
+  let [buttonDeleteConfirm] = await page.$x('//div/button[text()="Delete"]')
+  buttonDeleteConfirm.tap()
+  await sleep(random(2000, 3000))
+}
+
 let pageGoToSelfProfile = async (page, username) => {
   let [link] = await page.$x(`//div[position()=5]/a[@href="/${username}/"]`)
   await link.tap()
@@ -236,7 +250,7 @@ puppeteer.launch({
     await sleep(random(45 * 60e3, 60 * 60e3))
   }
 
-  let dimensions = await page.evaluate(() => {
+  /*let dimensions = await page.evaluate(() => {
     return {
       innerWidth,
       innerHeight,
@@ -248,7 +262,7 @@ puppeteer.launch({
       userAgent: navigator.userAgent,
     }
   })
-  console.log('Dimensions:', dimensions)
+  console.log('Dimensions:', dimensions)*/
 
   // await page.screenshot({ path: 'data/test-screenshot.png' })
   await browser.close()
