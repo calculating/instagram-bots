@@ -101,6 +101,26 @@ let pageFollowAtProfile = async page => {
   }
 }
 
+let pagePostFile = async (page, path, caption) => {
+  let [fileChooser] = await Promise.all([
+    page.waitForFileChooser(),
+    page.tap('[aria-label="New Post"]'),
+  ])
+  await fileChooser.accept([path])
+  await sleep(random(2000, 3000))
+
+  let [buttonNext] = await page.$x('//div/button[text()="Next"]')
+  await buttonNext.tap()
+  await sleep(random(1000, 1500))
+
+  await page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
+  await sleep(random(500, 1000))
+
+  let [buttonShare] = await page.$x('//div/button[text()="Share"]')
+  await buttonShare.tap()
+  await sleep(random(2000, 3000))
+}
+
 let stealth = StealthPlugin()
 stealth.enabledEvasions.delete('user-agent-override')
 puppeteer.use(stealth)
@@ -156,7 +176,7 @@ puppeteer.launch({
 
   await pageEliminatePopUps(page)
 
-  // await sleep(48 * 60 * 60e3) // sleep forever
+  await sleep(48 * 60 * 60e3) // sleep forever
 
   // await page.repl()
 
@@ -215,14 +235,6 @@ puppeteer.launch({
     await pageUnfollowFirstAtFollowing(page)
     await sleep(random(45 * 60e3, 60 * 60e3))
   }
-
-  /*
-  let [fileChooser] = await Promise.all([
-    page.waitForFileChooser(),
-    page.tap('[aria-label="New Post"]'),
-  ])
-  await fileChooser.accept([])
-  */
 
   let dimensions = await page.evaluate(() => {
     return {
