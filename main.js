@@ -107,6 +107,23 @@ let pageUnfollowFirstAtFollowing = async page => {
   }
 }
 
+let pageGoToOldestPostFromProfile = async page => {
+  let oldestPost = null
+  while (true) {
+    let [oldestKnownPost] = await page.$x('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]')
+
+    let { y } = await oldestKnownPost.boundingBox()
+    if (y <= 600) {
+      oldestPost = oldestKnownPost
+      break
+    }
+
+    await page.mouse.wheel({ deltaY: random(300, 500) })
+    await sleep(random(2000, 3000))
+  }
+  await oldestPost.tap()
+}
+
 let pageFollowAtProfile = async page => {
   let [button] = await page.$x('//span/button[text()="Follow" or text()="Follow Back"]')
   if (button) {
@@ -115,7 +132,7 @@ let pageFollowAtProfile = async page => {
   }
 }
 
-let pagePostFile = async (page, path, caption) => {
+let pageCreatePost = async (page, path, caption) => {
   let [fileChooser] = await Promise.all([
     page.waitForFileChooser(),
     page.tap('[aria-label="New Post"]'),
@@ -132,7 +149,7 @@ let pagePostFile = async (page, path, caption) => {
 
   let [buttonShare] = await page.$x('//div/button[text()="Share"]')
   await buttonShare.tap()
-  await sleep(random(2000, 3000))
+  await sleep(random(5000, 7500))
 }
 
 let stealth = StealthPlugin()
@@ -191,6 +208,12 @@ puppeteer.launch({
   await pageEliminatePopUps(page)
 
   await sleep(48 * 60 * 60e3) // sleep forever
+
+  // await pageGoToSelfProfile(page, database.username)
+
+  await pageGoToOldestPostFromProfile(page)
+
+  // await pagePostFile(page, 'test.jpg', 'Hello')
 
   // await page.repl()
 
