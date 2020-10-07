@@ -142,6 +142,7 @@ let pageGoToOldestPostFromProfile = async page => {
     await sleep(random(2000, 3000))
   }
   await oldestPost.tap()
+  await sleep(random(2000, 3000))
 }
 
 let pageFollowAtProfile = async page => {
@@ -229,6 +230,15 @@ puppeteer.launch({
   await pageEliminatePopUps(page)
 
   await sleep(48 * 60 * 60e3) // sleep forever
+
+  while (true) {
+    await pageGoToSelfProfile(page, database.username)
+    await pageGoToOldestPostFromProfile(page)
+    let caption = await pagePostDownloadImage(page, 'data/tmp-image.png')
+    await pagePostDelete(page)
+    await pageCreatePost(page, 'data/tmp-image.png', caption)
+    await sleep(random(45 * 60e3, 60 * 60e3)) // 45-60 minutes
+  }
 
   // await pageGoToSelfProfile(page, database.username)
 
