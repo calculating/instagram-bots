@@ -20,6 +20,12 @@ let database = {
     async set(array) {
       if (!Array.isArray(array))
         throw new Error('Cookies must be an array')
+      try {
+        await fs.mkdir(__dirname + '/data')
+      } catch (err) {
+        if (err.code !== 'EEXIST')
+          throw err
+      }
       await fs.writeFile(__dirname + '/data/cookies.json', JSON.stringify(array))
     },
   },
