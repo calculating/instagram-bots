@@ -6,6 +6,8 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 const UserAgentOverride = require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')
 const ReplPlugin = require('puppeteer-extra-plugin-repl')
 
+const WebSocket = require('WebSocket')
+
 let database = {
   username: '',
   password: '',
