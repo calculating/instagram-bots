@@ -1,16 +1,25 @@
 const fs = require('fs').promises
 
-const puppeteer = require('puppeteer-extra')
-const puppeteerDevices = require('puppeteer').devices
-const StealthPlugin = require('puppeteer-extra-plugin-stealth')
-const UserAgentOverride = require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')
-const ReplPlugin = require('puppeteer-extra-plugin-repl')
+const WebSocket = require('ws')
 
-const WebSocket = require('WebSocket')
+const puppeteer = require('puppeteer-extra')
+
+let stealth = require('puppeteer-extra-plugin-stealth')()
+stealth.enabledEvasions.delete('user-agent-override')
+puppeteer.use(stealth)
+
+puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')({
+  userAgent: puppeteer.pptr.devices['Pixel 2'].userAgent.replace(/Chrome\/[^ ]+/, 'Chrome/85.0.4182.0'),
+  locale: 'en-US,en;q=0.9',
+  platform: 'Linux aarch64',
+}))
+
+puppeteer.use(require('puppeteer-extra-plugin-repl')())
 
 let database = {
   username: '',
   password: '',
+  server: 'localhost:6000',
   cookies: {
     async get() {
       try {
@@ -33,13 +42,198 @@ let database = {
   },
 }
 
-let shouldLikePost = username => {
-  return /^[a-z]{6,16}$/.test(username)
-}
-
 let sleep = time => new Promise(resolve => setTimeout(resolve, time))
 
 let random = (min, max) => min + (max - min) * (Math.random() + Math.random() + Math.random()) / 3
+
+let delay = async type => {
+  if (type === 'fast') { // for general fast delays (e.g. get rid of animation)
+    await sleep(random(1000, 1500))
+  } else if (type === 'network') { // for delays with a simple network request (e.g. like)
+    await sleep(random(2000, 3000))
+  } else if (type === 'long') { // for longer delays that may need extra processing (e.g. log in)
+    await sleep(random(5000, 7500))
+  } else {
+    throw new Error(`Invalid sleep delay '${type}'`)
+  }
+  await sleep(duration)
+}
+
+const Puppet = class {
+  constructor() {
+    this.browser = null
+    this.context = null
+    this.page = null
+
+    this.status = null
+  }
+
+  async launch(headless = true) {
+    this.browser = await puppeteer.launch({
+      headless,
+      defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
+      args: ['--window-size=500,875'],
+    })
+
+    console.log('Opening Instagram')
+
+    this.context = await browser.createIncognitoBrowserContext()
+    this.page = await context.newPage()
+  }
+
+  async load(database = database) {
+    // TODO: better database system?
+    await this.page.setCookie(...await database.cookies.get())
+    setInterval(async () => {
+      await database.cookies.set(await page.cookies())
+    }, 1000)
+
+    await this.page.goto('https://www.instagram.com/')
+    await delay('network')
+  }
+
+  async close() {
+    await this.browser.close()
+    this.browser = null
+    this.context = null
+    this.page = null
+
+    this.status = null
+  }
+
+  async select(xPathExpression, { required = true, first = false, all = false, source = this.page } = {}) {
+    let elements = await source.$x('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]')
+    if (all)
+      return elements
+    if (elements.length > 1 && !first)
+      throw new Error(`Multiple elements found for XPath expression '${xPathExpression}'`)
+    if (elements.length === 0 && required)
+      throw new Error(`No element found for XPath expression '${xPathExpression}'`)
+    return elements[0] || null
+  }
+
+  async tap(xPathExpression, delayType = false, config = {}) {
+    config.all = false
+    let element = await this.select(xPathExpression, config)
+    if (element) {
+      await element.tap()
+      if (delayType) await delay(delayType)
+    }
+    return !!element
+  }
+
+  async type(xPathExpression, content, delayType = null, config = {}) {
+    config.all = false
+    let element = await this.select(xPathExpression, config)
+    if (element) {
+      await element.type(content, { delay: random(75, 100) })
+      if (delayType) await delay(delayType)
+    }
+    return !!element
+  }
+
+  async login(username, password) {
+    if (!await this.tap('//button[contains(., "Log In")]', 'fast', { required: false })) return
+
+    await page.type('input[name="username"]', username, { delay: random(75, 100) })
+    await sleep(random(500, 1000))
+
+    await page.type('input[name="password"]', password, { delay: random(75, 100) })
+    await sleep(random(500, 1000))
+
+    await this.tap('//button[contains(., "Log In")]', 'long')
+    await this.tap('//button[contains(., "Save Info")]', 'network', { required: false })
+  }
+
+  async eliminatePopUps() {
+    await this.tap('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]', 'fast', { required: false })
+    await this.tap('//*[@role="dialog"]//div[div/h2[contains(., "Turn on Notifications")]]/div/button[contains(., "Not Now")]', 'fast', { required: false })
+    await this.tap('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now") or //*[@aria-label="Close"]]', 'fast', { required: false })
+  }
+
+  async backButton() {
+    await this.tap('//header//*[@aria-label="Back"]', 'network')
+  }
+
+  async postComment() {
+    await this.type('//form/textarea[contains(@aria-label, "Add a comment")]', content, 'fast')
+    await this.tap('//form/button[text()="Post"]', 'network')
+  }
+
+  async postDelete() {
+    await this.tap('//*[@aria-label="More options"]', 'fast')
+    await this.tap('//div/button[text()="Delete"]', 'fast')
+    await this.tap('//div/button[text()="Delete"]', 'network')
+  }
+
+  async postDownloadImage(path) {
+    let img = await this.select('//article/div/div[@role="button"]//img')
+    await img.screenshot({ path, omitBackground: true })
+
+    let caption = await this.select('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span', { required: false })
+    if (!caption) return null
+
+    await this.tap('span/button[text()="more"]', null, { source: caption, required: false })
+
+    return caption.evaluate(node => node.innerText)
+  }
+
+  async goToSelfProfile(username) {
+    await this.tap(`//div[position()=5]/a[@href="/${username}/"]`, 'network')
+  }
+
+  async goToFollowingFromProfile(username) {
+    await this.tap(`//ul/li[position()=3]/a[@href="/${username}/following/"]`, 'network')
+  }
+
+  async unfollowFirstAtFollowing() {
+    if (await this.tap('//div/button[text()="Following"]', 'fast', { required: false }))
+      await this.tap('//*[@role="dialog"]//div/button[text()="Unfollow"]', 'network')
+  }
+
+  async goToOldestPostFromProfile() {
+    let oldestPost = null
+    while (true) {
+      let oldestKnownPost = await this.select('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]')
+
+      let { y } = await oldestKnownPost.boundingBox()
+      if (y <= 600) {
+        oldestPost = oldestKnownPost
+        break
+      }
+
+      await page.mouse.wheel({ deltaY: random(300, 500) })
+      await delay('network')
+    }
+    await oldestPost.tap()
+    await delay('network')
+  }
+
+  async followAtProfile() {
+    await this.tap('//span/button[text()="Follow" or text()="Follow Back"]', 'network', { required: false })
+  }
+
+  async createPost(path, caption) {
+    let [fileChooser] = await Promise.all([
+      this.page.waitForFileChooser(),
+      this.page.tap('[aria-label="New Post"]'),
+    ])
+    await fileChooser.accept([path])
+    await sleep(random(2000, 3000))
+
+    await this.tap('//div/button[text()="Next"]', 'fast')
+
+    if (caption)
+      await this.page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
+    await sleep(random(500, 1000))
+
+    await this.tap('//div/button[text()="Share"]', 'long')
+  }
+}
+
+let shouldLikePost = username => {
+  return /^[a-z]{6,16}$/.test(username)
+}
 
 let pageEliminatePopUps = async page => {
   let [buttonRefuseWebApp] = await page.$x('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]')
@@ -176,21 +370,9 @@ let pageCreatePost = async (page, path, caption) => {
   await sleep(random(5000, 7500))
 }
 
-let stealth = StealthPlugin()
-stealth.enabledEvasions.delete('user-agent-override')
-puppeteer.use(stealth)
-
-puppeteer.use(UserAgentOverride({
-  userAgent: puppeteerDevices['Pixel 2'].userAgent.replace(/Chrome\/[^ ]+/, 'Chrome/85.0.4182.0'),
-  locale: 'en-US,en;q=0.9',
-  platform: 'Linux aarch64',
-}))
-
-puppeteer.use(ReplPlugin())
-
 puppeteer.launch({
   headless: false,
-  defaultViewport: puppeteerDevices['Pixel 2'].viewport,
+  defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
   args: ['--window-size=500,875'],
 }).then(async browser => {
   console.log('Opening Instagram')
@@ -323,3 +505,38 @@ puppeteer.launch({
   // await page.screenshot({ path: 'data/test-screenshot.png' })
   await browser.close()
 })
+
+let puppet = new Puppet()
+let ws = new WebSocket(`ws://${database.server}/`)
+
+ws.on('open', () => {
+  console.log('Connected to server')
+})
+
+ws.on('message', data => {
+  let message
+  try {
+    message = JSON.parse(data)
+  } catch (e) {}
+  if (message == null || typeof message !== 'object') {
+    console.warn('Invalid packet received', data)
+    return
+  }
+
+  console.log(message)
+
+  switch (message.cmd) {
+    case 'browser.launch':
+      puppet.launch(false)
+      break
+    case 'browser.close':
+      puppet.close()
+      break
+  }
+})
+
+ws.on('close', () => {
+  console.log('Disconnected from server')
+})
+
+ws.on('error', console.error)
