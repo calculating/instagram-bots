@@ -56,7 +56,6 @@ let delay = async type => {
   } else {
     throw new Error(`Invalid sleep delay '${type}'`)
   }
-  await sleep(duration)
 }
 
 const Puppet = class {
@@ -65,6 +64,7 @@ const Puppet = class {
     this.context = null
     this.page = null
 
+    this.cookiesInterval = null
     this.status = null
   }
 
@@ -77,15 +77,17 @@ const Puppet = class {
 
     console.log('Opening Instagram')
 
-    this.context = await browser.createIncognitoBrowserContext()
-    this.page = await context.newPage()
+    this.context = await this.browser.createIncognitoBrowserContext()
+    this.page = await this.context.newPage()
   }
 
-  async load(database = database) {
+  async load(database) {
     // TODO: better database system?
     await this.page.setCookie(...await database.cookies.get())
-    setInterval(async () => {
-      await database.cookies.set(await page.cookies())
+
+    clearInterval(this.cookiesInterval)
+    this.cookiesInterval = setInterval(async () => {
+      await database.cookies.set(await this.page.cookies())
     }, 1000)
 
     await this.page.goto('https://www.instagram.com/')
@@ -98,11 +100,14 @@ const Puppet = class {
     this.context = null
     this.page = null
 
+    clearInterval(this.cookiesInterval)
+    this.cookiesInterval = null
+
     this.status = null
   }
 
   async select(xPathExpression, { required = true, first = false, all = false, source = this.page } = {}) {
-    let elements = await source.$x('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]')
+    let elements = await source.$x(xPathExpression)
     if (all)
       return elements
     if (elements.length > 1 && !first)
@@ -135,10 +140,10 @@ const Puppet = class {
   async login(username, password) {
     if (!await this.tap('//button[contains(., "Log In")]', 'fast', { required: false })) return
 
-    await page.type('input[name="username"]', username, { delay: random(75, 100) })
+    await this.page.type('input[name="username"]', username, { delay: random(75, 100) })
     await sleep(random(500, 1000))
 
-    await page.type('input[name="password"]', password, { delay: random(75, 100) })
+    await this.page.type('input[name="password"]', password, { delay: random(75, 100) })
     await sleep(random(500, 1000))
 
     await this.tap('//button[contains(., "Log In")]', 'long')
@@ -178,12 +183,16 @@ const Puppet = class {
     return caption.evaluate(node => node.innerText)
   }
 
-  async goToSelfProfile(username) {
-    await this.tap(`//div[position()=5]/a[@href="/${username}/"]`, 'network')
+  async goToSelfProfile() {
+    await this.tap(`//div[position()=5]/a/span/img`, 'network')
   }
 
-  async goToFollowingFromProfile(username) {
-    await this.tap(`//ul/li[position()=3]/a[@href="/${username}/following/"]`, 'network')
+  async goToFollowersFromProfile() {
+    await this.tap(`//ul/li[position()=2]/a[contains(., "followers")]`, 'network')
+  }
+
+  async goToFollowingFromProfile() {
+    await this.tap(`//ul/li[position()=3]/a[contains(., "following")]`, 'network')
   }
 
   async unfollowFirstAtFollowing() {
@@ -202,7 +211,7 @@ const Puppet = class {
         break
       }
 
-      await page.mouse.wheel({ deltaY: random(300, 500) })
+      await this.page.mouse.wheel({ deltaY: random(300, 500) })
       await delay('network')
     }
     await oldestPost.tap()
@@ -228,6 +237,15 @@ const Puppet = class {
     await sleep(random(500, 1000))
 
     await this.tap('//div/button[text()="Share"]', 'long')
+  }
+
+  async cyclePost() {
+    await this.goToSelfProfile(database.username)
+    await this.goToOldestPostFromProfile()
+    let caption = await this.postDownloadImage('data/tmp-image.png')
+    await this.postDelete()
+    await this.createPost('data/tmp-image.png', caption)
+    await sleep(random(45 * 60e3, 60 * 60e3)) // 45-60 minutes
   }
 }
 
@@ -370,6 +388,7 @@ let pageCreatePost = async (page, path, caption) => {
   await sleep(random(5000, 7500))
 }
 
+/*
 puppeteer.launch({
   headless: false,
   defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
@@ -488,23 +507,10 @@ puppeteer.launch({
     await sleep(random(45 * 60e3, 60 * 60e3))
   }
 
-  /*let dimensions = await page.evaluate(() => {
-    return {
-      innerWidth,
-      innerHeight,
-      outerWidth,
-      outerHeight,
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight,
-      deviceScaleFactor: window.devicePixelRatio,
-      userAgent: navigator.userAgent,
-    }
-  })
-  console.log('Dimensions:', dimensions)*/
-
   // await page.screenshot({ path: 'data/test-screenshot.png' })
   await browser.close()
 })
+*/
 
 let puppet = new Puppet()
 let ws = new WebSocket(`ws://${database.server}/`)
@@ -529,8 +535,41 @@ ws.on('message', data => {
     case 'browser.launch':
       puppet.launch(false)
       break
+    case 'browser.load':
+      puppet.load(database)
+      break
     case 'browser.close':
       puppet.close()
+      break
+    case 'page.backButton':
+      puppet.backButton()
+      break
+    case 'page.postComment':
+      puppet.postComment()
+      break
+    case 'page.postDelete':
+      puppet.postDelete()
+      break
+    case 'page.goToSelfProfile':
+      puppet.goToSelfProfile()
+      break
+    case 'page.goToFollowersFromProfile':
+      puppet.goToFollowersFromProfile()
+      break
+    case 'page.goToFollowingFromProfile':
+      puppet.goToFollowingFromProfile()
+      break
+    case 'page.unfollowFirstAtFollowing':
+      puppet.unfollowFirstAtFollowing()
+      break
+    case 'page.goToOldestPostFromProfile':
+      puppet.goToOldestPostFromProfile()
+      break
+    case 'page.followAtProfile':
+      puppet.followAtProfile()
+      break
+    case 'page.cyclePost':
+      puppet.cyclePost()
       break
   }
 })
