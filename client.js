@@ -1,4 +1,7 @@
 const fs = require('fs').promises
+const fsSync = require('fs')
+const https = require('https')
+const path = require('path')
 
 const WebSocket = require('ws')
 
@@ -59,6 +62,17 @@ let delay = async type => {
     throw new Error(`Invalid sleep delay '${type}'`)
   }
 }
+
+let downloadFile = (src, path) => new Promise((resolve, reject) => {
+  let file = fsSync.createWriteStream(path)
+  let req = https.get(src, res => {
+    res.pipe(file)
+    file.on('finish', () => file.close(resolve))
+  }).on('error', err => {
+    reject(err)
+    fs.unlink(path).catch(() => {})
+  })
+})
 
 const Puppet = class {
   constructor() {
@@ -171,10 +185,13 @@ const Puppet = class {
     await this.tap('//div/button[text()="Delete"]', 'network')
   }
 
-  async postDownloadImage(path) {
-    let img = await this.select('//article/div/div[@role="button"]//img')
-    await img.screenshot({ path, omitBackground: true })
+  async postGetMediaSrc() {
+    let media = await this.select('//article/div/div[@role="button"]//img | //article/div/div//*[img]/video')
 
+    return media.evaluate(node => node.getAttribute('src'))
+  }
+
+  async postGetCaption() {
     let caption = await this.select('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span', { required: false })
     if (!caption) return null
 
@@ -242,15 +259,73 @@ const Puppet = class {
   async cyclePost() {
     await this.goToSelfProfile(database.username)
     await this.goToOldestPostFromProfile()
-    let caption = await this.postDownloadImage('data/tmp-image.png')
-    await this.postDelete()
-    await this.createPost('data/tmp-image.png', caption)
-    await sleep(random(45 * 60e3, 60 * 60e3)) // 45-60 minutes
-  }
-}
 
-let shouldLikePost = username => {
-  return /^[a-z]{6,16}$/.test(username)
+    let src = await this.postGetMediaSrc()
+    let caption = await this.postGetCaption()
+
+    // hope that the CDN servers aren't equipped with bot detectors...
+    // TODO: https://github.com/puppeteer/puppeteer/issues/299
+    let path = `data/tmp-file${path.extname(src)}`
+    await downloadFile(src, path)
+
+    await this.postDelete()
+    await this.createPost(path, caption)
+  }
+
+  async browseHomepage() {
+    // TODO: better way to determine if a post should be liked
+    let shouldLikePost = username => {
+      return /^[a-z]{6,16}$/.test(username)
+    }
+
+    let lastUsername = null
+    while (true) {
+      let posts = await this.page.$x('//article[@role="presentation"][div/section//button//*[@aria-label="Like"]]')
+      let post = null
+      let likeButton = null
+      let commentButton = null
+      for (let currentPost of posts) {
+        let [currentLikeButton] = await currentPost.$x('div/section//button//*[@aria-label="Like"]')
+        let [currentCommentButton] = await currentPost.$x('div/section//button//*[@aria-label="Comment"]')
+        let { y } = await currentLikeButton.boundingBox()
+        if (y > 600) break
+        post = currentPost
+        likeButton = currentLikeButton
+        commentButton = currentCommentButton
+      }
+
+      if (post) {
+        let [usernameLink] = await post.$x('header/div/div/div/a')
+        let username = await usernameLink.evaluate(node => node.innerHTML)
+        console.log(`Found post by ${username}`)
+
+        if (lastUsername !== username && shouldLikePost(username)) {
+          console.log('Post liked')
+          lastUsername = username
+          await likeButton.tap()
+          await delay('network')
+
+          if (Math.random() < 0.5) {
+            await commentButton.tap()
+            await delay('network')
+
+            await this.postComment('yes')
+
+            await this.backButton()
+            await delay('network')
+          }
+        }
+      }
+
+      await this.page.mouse.wheel({ deltaY: random(300, 500) })
+      await delay('network')
+    }
+  }
+
+  // debug function
+  async debugRepl() {
+    await this.page.repl()
+  }
 }
 
 let pageEliminatePopUps = async page => {
