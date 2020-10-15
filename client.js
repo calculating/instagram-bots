@@ -98,7 +98,7 @@ const Puppet = class {
     this.page = await this.context.newPage()
   }
 
-  async load(database) {
+  async load() {
     // TODO: better database system?
     await this.page.setCookie(...await database.cookies.get())
 
@@ -594,7 +594,7 @@ ws.on('open', () => {
   console.log('Connected to server')
 })
 
-ws.on('message', data => {
+ws.on('message', async data => {
   let message
   try {
     message = JSON.parse(data)
@@ -603,50 +603,23 @@ ws.on('message', data => {
     console.warn('Invalid packet received', data)
     return
   }
-
   console.log(message)
 
-  switch (message.cmd) {
-    case 'browser.launch':
-      puppet.launch(false)
-      break
-    case 'browser.load':
-      puppet.load(database)
-      break
-    case 'browser.close':
-      puppet.close()
-      break
-    case 'page.backButton':
-      puppet.backButton()
-      break
-    case 'page.postComment':
-      puppet.postComment()
-      break
-    case 'page.postDelete':
-      puppet.postDelete()
-      break
-    case 'page.goToSelfProfile':
-      puppet.goToSelfProfile()
-      break
-    case 'page.goToFollowersFromProfile':
-      puppet.goToFollowersFromProfile()
-      break
-    case 'page.goToFollowingFromProfile':
-      puppet.goToFollowingFromProfile()
-      break
-    case 'page.unfollowFirstAtFollowing':
-      puppet.unfollowFirstAtFollowing()
-      break
-    case 'page.goToOldestPostFromProfile':
-      puppet.goToOldestPostFromProfile()
-      break
-    case 'page.followAtProfile':
-      puppet.followAtProfile()
-      break
-    case 'page.cyclePost':
-      puppet.cyclePost()
-      break
+  let res = null
+
+  if (message.t === 'cmd') {
+    try {
+      res = await (message.args ? puppet[message.cmd](...message.args) : puppet[message.cmd]())
+    } catch (err) {
+      console.log(err)
+      res = err.message
+    }
   }
+
+  if (res != null)
+    ws.send(JSON.stringify({ i: message.i, t: 'ack', res }))
+  else
+    ws.send(JSON.stringify({ i: message.i, t: 'ack' }))
 })
 
 ws.on('close', () => {

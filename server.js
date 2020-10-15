@@ -37,11 +37,14 @@ let log = (...args) => {
 let wss = new WebSocket.Server({ port: 6000 })
 
 let ws = null
+let i = -1
+
 wss.on('connection', newWs => {
   log('New connection')
   if (ws) ws.close()
 
   ws = newWs
+  i = -1
   ws.on('message', data => {
     let message
     try {
@@ -52,6 +55,12 @@ wss.on('connection', newWs => {
       return
     }
     log(message)
+
+    if (message.t === 'ack') {
+      if (message.i !== i)
+        log(`Mismatch in acknowledgement index: expecting ${i} but received ${message.i}`)
+      rl.prompt()
+    }
   })
   ws.on('close', code => {
     log('Connection closed', code)
@@ -68,12 +77,22 @@ let rl = readline.createInterface({
 rl.prompt()
 
 rl.on('line', line => {
+  let [all, cmd, argsString] = line.match(/^([^\s]*)(?:\s+([^]*))?$/)
+  let args = []
+  if (argsString) {
+    try {
+      args = JSON.parse(`[${argsString}]`)
+    } catch (err) {
+      log('Invalid arguments')
+      return
+    }
+  }
   if (!ws) {
     log('No connected client')
   } else {
-    ws.send(JSON.stringify({ cmd: line }))
+    i++
+    ws.send(JSON.stringify({ i, t: 'cmd', cmd, args }))
   }
-  rl.prompt()
 })
 
 rl.on('close', () => {
