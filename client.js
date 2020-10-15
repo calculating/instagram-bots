@@ -47,7 +47,9 @@ let sleep = time => new Promise(resolve => setTimeout(resolve, time))
 let random = (min, max) => min + (max - min) * (Math.random() + Math.random() + Math.random()) / 3
 
 let delay = async type => {
-  if (type === 'fast') { // for general fast delays (e.g. get rid of animation)
+  if (type === 'veryFast') { // for general fast delays (e.g. get rid of animation)
+    await sleep(random(500, 1000))
+  } else if (type === 'fast') { // for general fast delays (e.g. get rid of animation)
     await sleep(random(1000, 1500))
   } else if (type === 'network') { // for delays with a simple network request (e.g. like)
     await sleep(random(2000, 3000))
@@ -68,6 +70,7 @@ const Puppet = class {
     this.status = null
   }
 
+  // basic browser/session initiation functions
   async launch(headless = true) {
     this.browser = await puppeteer.launch({
       headless,
@@ -106,6 +109,7 @@ const Puppet = class {
     this.status = null
   }
 
+  // xPath and base interaction functions
   async select(xPathExpression, { required = true, first = false, all = false, source = this.page } = {}) {
     let elements = await source.$x(xPathExpression)
     if (all)
@@ -137,15 +141,11 @@ const Puppet = class {
     return !!element
   }
 
+  // main actions
   async login(username, password) {
     if (!await this.tap('//button[contains(., "Log In")]', 'fast', { required: false })) return
-
-    await this.page.type('input[name="username"]', username, { delay: random(75, 100) })
-    await sleep(random(500, 1000))
-
-    await this.page.type('input[name="password"]', password, { delay: random(75, 100) })
-    await sleep(random(500, 1000))
-
+    await this.type('//input[@name="username"]', username, 'veryFast')
+    await this.type('//input[@name="password"]', password, 'veryFast')
     await this.tap('//button[contains(., "Log In")]', 'long')
     await this.tap('//button[contains(., "Save Info")]', 'network', { required: false })
   }
@@ -160,7 +160,7 @@ const Puppet = class {
     await this.tap('//header//*[@aria-label="Back"]', 'network')
   }
 
-  async postComment() {
+  async postComment(content) {
     await this.type('//form/textarea[contains(@aria-label, "Add a comment")]', content, 'fast')
     await this.tap('//form/button[text()="Post"]', 'network')
   }
@@ -184,15 +184,15 @@ const Puppet = class {
   }
 
   async goToSelfProfile() {
-    await this.tap(`//div[position()=5]/a/span/img`, 'network')
+    await this.tap('//div[position()=5]/a/span/img', 'network')
   }
 
   async goToFollowersFromProfile() {
-    await this.tap(`//ul/li[position()=2]/a[contains(., "followers")]`, 'network')
+    await this.tap('//ul/li[position()=2]/a[contains(., "followers")]', 'network')
   }
 
   async goToFollowingFromProfile() {
-    await this.tap(`//ul/li[position()=3]/a[contains(., "following")]`, 'network')
+    await this.tap('//ul/li[position()=3]/a[contains(., "following")]', 'network')
   }
 
   async unfollowFirstAtFollowing() {
@@ -223,18 +223,18 @@ const Puppet = class {
   }
 
   async createPost(path, caption) {
-    let [fileChooser] = await Promise.all([
-      this.page.waitForFileChooser(),
-      this.page.tap('[aria-label="New Post"]'),
-    ])
+    let fileChooserPromise = this.page.waitForFileChooser()
+
+    await this.tap('//*[@aria-label="New Post"]')
+
+    let fileChooser = await fileChooserPromise
     await fileChooser.accept([path])
-    await sleep(random(2000, 3000))
+    await delay('network')
 
     await this.tap('//div/button[text()="Next"]', 'fast')
 
     if (caption)
-      await this.page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
-    await sleep(random(500, 1000))
+      await this.page.type('//textarea[contains(@aria-label, "Write a caption")]', caption, 'veryFast')
 
     await this.tap('//div/button[text()="Share"]', 'long')
   }
