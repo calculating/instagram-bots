@@ -80,12 +80,18 @@ const Puppet = class {
     this.context = null
     this.page = null
 
-    this.cookiesInterval = null
+    this.cookies = {
+      loaded: false,
+      interval: null,
+    }
     this.status = null
   }
 
   // basic browser/session initiation functions
   async launch(headless = true) {
+    if (this.browser)
+      await this.close()
+
     this.browser = await puppeteer.launch({
       headless,
       defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
@@ -99,27 +105,35 @@ const Puppet = class {
   }
 
   async load() {
+    clearInterval(this.cookies.interval)
+
     // TODO: better database system?
     await this.page.setCookie(...await database.cookies.get())
 
-    clearInterval(this.cookiesInterval)
-    this.cookiesInterval = setInterval(async () => {
+    this.cookies.loaded = true
+    this.cookies.interval = setInterval(async () => {
       await database.cookies.set(await this.page.cookies())
-    }, 1000)
+    }, 60e3)
 
     await this.page.goto('https://www.instagram.com/')
     await delay('network')
   }
 
   async close() {
-    await this.browser.close()
+    clearInterval(this.cookies.interval)
+
+    if (this.page) {
+      if (this.cookies.loaded)
+        await database.cookies.set(await this.page.cookies())
+      await this.browser.close()
+    }
+
     this.browser = null
     this.context = null
     this.page = null
 
-    clearInterval(this.cookiesInterval)
-    this.cookiesInterval = null
-
+    this.cookies.loaded = false
+    this.cookies.interval = null
     this.status = null
   }
 
