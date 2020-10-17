@@ -96,6 +96,9 @@ const Puppet = class {
       headless,
       defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
       args: ['--window-size=500,875'],
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
     })
 
     console.log('Opening Instagram')
@@ -628,6 +631,8 @@ ws.on('message', async data => {
       console.log(err)
       res = err.message
     }
+  } else if (message.t === 'exit') {
+    process.exit()
   }
 
   if (res != null)
@@ -641,3 +646,20 @@ ws.on('close', () => {
 })
 
 ws.on('error', console.error)
+
+let exiting = false
+for (let signal of ['SIGINT', 'SIGHUP', 'SIGTERM'])
+  process.on(signal, () => {
+    if (exiting) return
+    exiting = true
+
+    setTimeout(() => process.exit(1), 1000)
+
+    ws.close(1001)
+    puppet.close().then(() => process.exit()).catch(err => {
+      console.log(err)
+      process.exit(1)
+    })
+  })
+
+process.stdin.resume()
