@@ -274,7 +274,7 @@ const Puppet = class {
   }
 
   async cyclePost() {
-    await this.goToSelfProfile(database.username)
+    await this.goToSelfProfile()
     await this.goToOldestPostFromProfile()
 
     let src = await this.postGetMediaSrc()
@@ -287,6 +287,22 @@ const Puppet = class {
 
     await this.postDelete()
     await this.createPost(path, caption)
+  }
+
+  async cycleAllPosts() {
+    while (true) {
+      await this.cyclePost()
+      await sleep(random(45 * 60e3, 60 * 60e3))
+    }
+  }
+
+  async unfollowAll() {
+    await this.goToSelfProfile()
+    await this.goToFollowingFromProfile()
+    while (true) {
+      await this.unfollowFirstAtFollowing()
+      await sleep(random(45 * 60e3, 60 * 60e3))
+    }
   }
 
   async browseHomepage() {
@@ -344,265 +360,6 @@ const Puppet = class {
     await this.page.repl()
   }
 }
-
-let pageEliminatePopUps = async page => {
-  let [buttonRefuseWebApp] = await page.$x('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]')
-  if (buttonRefuseWebApp) {
-    await buttonRefuseWebApp.tap()
-    await sleep(random(1000, 1500))
-  }
-
-  let [buttonRefuseNotifications] = await page.$x('//*[@role="dialog"]//div[div/h2[contains(., "Turn on Notifications")]]/div/button[contains(., "Not Now")]')
-  if (buttonRefuseNotifications) {
-    await buttonRefuseNotifications.tap()
-    await sleep(random(1000, 1500))
-  }
-
-  let [buttonRefuseApp] = await page.$x('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now") or //*[@aria-label="Close"]]')
-  if (buttonRefuseApp) {
-    await buttonRefuseApp.tap()
-    await sleep(random(1000, 1500))
-  }
-}
-
-let pageBackButton = async page => {
-  let [button] = await page.$x('//header//*[@aria-label="Back"]')
-  await button.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pagePostComment = async (page, content) => {
-  let [textarea] = await page.$x('//form/textarea[contains(@aria-label, "Add a comment")]')
-  await textarea.type(content, { delay: random(75, 100) })
-  await sleep(random(1000, 1500))
-
-  let [button] = await page.$x('//form/button[text()="Post"]')
-  await button.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pagePostDelete = async page => {
-  let [buttonOptions] = await page.$x('//*[@aria-label="More options"]')
-  buttonOptions.tap()
-  await sleep(random(1000, 1500))
-
-  let [buttonDelete] = await page.$x('//div/button[text()="Delete"]')
-  buttonDelete.tap()
-  await sleep(random(1000, 1500))
-
-  let [buttonDeleteConfirm] = await page.$x('//div/button[text()="Delete"]')
-  buttonDeleteConfirm.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pagePostDownloadImage = async (page, path) => {
-  let [img] = await page.$x('//article/div/div[@role="button"]//img')
-  await img.screenshot({ path, omitBackground: true })
-
-  let [caption] = await page.$x('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span')
-  if (!caption) return null
-
-  let [buttonMore] = await caption.$x('span/button[text()="more"]')
-  if (buttonMore)
-    await buttonMore.tap()
-
-  return caption.evaluate(node => node.innerText)
-}
-
-let pageGoToSelfProfile = async (page, username) => {
-  let [link] = await page.$x(`//div[position()=5]/a[@href="/${username}/"]`)
-  await link.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pageGoToFollowingFromProfile = async (page, username) => {
-  let [link] = await page.$x(`//ul/li[position()=3]/a[@href="/${username}/following/"]`)
-  await link.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pageUnfollowFirstAtFollowing = async page => {
-  let [button] = await page.$x('//div/button[text()="Following"]')
-  if (button) {
-    await button.tap()
-    await sleep(random(1000, 1500))
-
-    let [buttonUnfollow] = await page.$x('//*[@role="dialog"]//div/button[text()="Unfollow"]')
-    await buttonUnfollow.tap()
-    await sleep(random(2000, 3000))
-  }
-}
-
-let pageGoToOldestPostFromProfile = async page => {
-  let oldestPost = null
-  while (true) {
-    let [oldestKnownPost] = await page.$x('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]')
-
-    let { y } = await oldestKnownPost.boundingBox()
-    if (y <= 600) {
-      oldestPost = oldestKnownPost
-      break
-    }
-
-    await page.mouse.wheel({ deltaY: random(300, 500) })
-    await sleep(random(2000, 3000))
-  }
-  await oldestPost.tap()
-  await sleep(random(2000, 3000))
-}
-
-let pageFollowAtProfile = async page => {
-  let [button] = await page.$x('//span/button[text()="Follow" or text()="Follow Back"]')
-  if (button) {
-    await button.tap()
-    await sleep(random(2000, 3000))
-  }
-}
-
-let pageCreatePost = async (page, path, caption) => {
-  let [fileChooser] = await Promise.all([
-    page.waitForFileChooser(),
-    page.tap('[aria-label="New Post"]'),
-  ])
-  await fileChooser.accept([path])
-  await sleep(random(2000, 3000))
-
-  let [buttonNext] = await page.$x('//div/button[text()="Next"]')
-  await buttonNext.tap()
-  await sleep(random(1000, 1500))
-
-  if (caption)
-    await page.type('textarea[aria-label*="Write a caption"]', caption, { delay: random(75, 100) })
-  await sleep(random(500, 1000))
-
-  let [buttonShare] = await page.$x('//div/button[text()="Share"]')
-  await buttonShare.tap()
-  await sleep(random(5000, 7500))
-}
-
-/*
-puppeteer.launch({
-  headless: false,
-  defaultViewport: puppeteer.pptr.devices['Pixel 2'].viewport,
-  args: ['--window-size=500,875'],
-}).then(async browser => {
-  console.log('Opening Instagram')
-
-  let context = await browser.createIncognitoBrowserContext()
-
-  let page = await context.newPage()
-
-  await page.setCookie(...await database.cookies.get())
-  setInterval(async () => {
-    await database.cookies.set(await page.cookies())
-  }, 1000)
-
-  await page.goto('https://www.instagram.com/')
-  await sleep(random(2000, 3000))
-
-  let [buttonLogInPage] = await page.$x('//button[contains(., "Log In")]')
-  if (buttonLogInPage) {
-    await buttonLogInPage.tap()
-    await sleep(random(1000, 1500))
-
-    await page.type('input[name="username"]', database.username, { delay: random(75, 100) })
-    await sleep(random(500, 1000))
-
-    await page.type('input[name="password"]', database.password, { delay: random(75, 100) })
-    await sleep(random(500, 1000))
-
-    let [buttonLogIn] = await page.$x('//button[contains(., "Log In")]')
-    await buttonLogIn.tap()
-    await sleep(random(5000, 7500))
-
-    let [buttonSaveInfo] = await page.$x('//button[contains(., "Save Info")]')
-    if (buttonSaveInfo) {
-      await buttonSaveInfo.tap()
-      await sleep(random(2000, 3000))
-    }
-  }
-
-  await pageEliminatePopUps(page)
-
-  await sleep(48 * 60 * 60e3) // sleep forever
-
-  while (true) {
-    await pageGoToSelfProfile(page, database.username)
-    await pageGoToOldestPostFromProfile(page)
-    let caption = await pagePostDownloadImage(page, 'data/tmp-image.png')
-    await pagePostDelete(page)
-    await pageCreatePost(page, 'data/tmp-image.png', caption)
-    await sleep(random(45 * 60e3, 60 * 60e3)) // 45-60 minutes
-  }
-
-  // await pageGoToSelfProfile(page, database.username)
-
-  await pageGoToOldestPostFromProfile(page)
-
-  // await pagePostFile(page, 'test.jpg', 'Hello')
-
-  // await page.repl()
-
-  let lastUsername = null
-  while (true) {
-    let posts = await page.$x('//article[@role="presentation"][div/section//button//*[@aria-label="Like"]]')
-    let post = null
-    let likeButton = null
-    let commentButton = null
-    for (let currentPost of posts) {
-      let [currentLikeButton] = await currentPost.$x('div/section//button//*[@aria-label="Like"]')
-      let [currentCommentButton] = await currentPost.$x('div/section//button//*[@aria-label="Comment"]')
-      let { y } = await currentLikeButton.boundingBox()
-      if (y > 600) break
-      post = currentPost
-      likeButton = currentLikeButton
-      commentButton = currentCommentButton
-    }
-
-    if (post) {
-      let [usernameLink] = await post.$x('header/div/div/div/a')
-      let username = await usernameLink.evaluate(node => node.innerHTML)
-      console.log(`Found post by ${username}`)
-
-      if (lastUsername !== username && shouldLikePost(username)) {
-        console.log('Post liked')
-        lastUsername = username
-        await likeButton.tap()
-        await sleep(random(2000, 3000))
-
-        if (Math.random() < 0.5) {
-          await commentButton.tap()
-          await sleep(random(2000, 3000))
-
-          await pagePostComment(page, 'yes')
-
-          await pageBackButton(page)
-          await sleep(random(2000, 3000))
-        }
-      }
-    }
-
-    await page.mouse.wheel({ deltaY: random(300, 500) })
-    await sleep(random(2000, 3000))
-  }
-
-  await sleep(48 * 60 * 60e3) // sleep forever
-
-  await pageGoToSelfProfile(page, database.username)
-
-  await pageEliminatePopUps(page)
-
-  await pageGoToFollowingFromProfile(page, database.username)
-
-  while (true) {
-    await pageUnfollowFirstAtFollowing(page)
-    await sleep(random(45 * 60e3, 60 * 60e3))
-  }
-
-  // await page.screenshot({ path: 'data/test-screenshot.png' })
-  await browser.close()
-})
-*/
 
 let puppet = new Puppet()
 let ws = new WebSocket(`ws://${database.server}/`)
