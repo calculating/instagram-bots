@@ -287,5 +287,5 @@ setInterval(async () => {
     serverData.posts.sort((a, b) => a.time - b.time)
   }
 
-  database.serverData.set(serverData)
+  await database.serverData.set(serverData)
 }, 60e3)

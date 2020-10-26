@@ -118,6 +118,15 @@ const Puppet = class {
       await database.cookies.set(await this.page.cookies())
     }, 60e3)
 
+    this.page.on('request', req => {
+      if (req.isNavigationRequest() && req.frame() === this.page.mainFrame() && !/^https:\/\/www.instagram.com($|\/)/i.test(req.url())) {
+        req.abort('blockedbyclient')
+      } else {
+        req.continue()
+      }
+    })
+
+    await this.page.setRequestInterception(true)
     await this.page.goto('https://www.instagram.com/')
     await delay('network')
   }
