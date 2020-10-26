@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "author": "",
   "description": "Instagram Automation",
-  "main": "main.js",
+  "main": "server.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/calculating/instagram-automation.git"

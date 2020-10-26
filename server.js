@@ -5,26 +5,22 @@ const readline = require('readline')
 const WebSocket = require('ws')
 
 let database = {
-  username: '',
-  password: '',
-  cookies: {
+  serverData: {
     async get() {
       try {
-        return JSON.parse(await fs.readFile(__dirname + '/data/cookies.json'))
+        return JSON.parse(await fs.readFile(__dirname + '/data/serverData.json'))
       } catch (err) {
-        return []
+        return null
       }
     },
-    async set(array) {
-      if (!Array.isArray(array))
-        throw new Error('Cookies must be an array')
+    async set(data) {
       try {
         await fs.mkdir(__dirname + '/data')
       } catch (err) {
         if (err.code !== 'EEXIST')
           throw err
       }
-      await fs.writeFile(__dirname + '/data/cookies.json', JSON.stringify(array))
+      await fs.writeFile(__dirname + '/data/serverData.json', JSON.stringify(data))
     },
   },
 }
@@ -42,8 +38,34 @@ const request = async (...args) => new Promise((resolve, reject) => {
 
 const requestJson = async (...args) => JSON.parse(await request(...args))
 
+const redditGeneratePost = async (subreddits = ['all']) => {
+  let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
+  let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
+  let time = 'week' // * = hour, day, week, month, year, all
+
+  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/hot/.json?raw_json=1&count=0&limit=10&t=${time}`, {
+    headers: {
+      'User-Agent': 'node.js:reddit-scraper:v0',
+    },
+  })
+
+  let post = null
+  for (let { data } of res.data.children)
+    if (data.url && data.title) {
+      post = {
+        url: data.url,
+        caption: data.title,
+      }
+      break
+    }
+  if (!post)
+    throw new Error('No valid post found')
+
+  return post
+}
+
 /*
-requestJson('https://www.reddit.com/r/all/top/.json?raw_json=1&count=0&limit=5&t=all', {
+requestJson('https://www.reddit.com/r/all/top.json?raw_json=1&count=0&limit=5&t=all', {
   headers: {
     'User-Agent': 'node.js:reddit-scraper:v0',
   },
@@ -235,3 +257,35 @@ rl.on('close', () => {
   console.log()
   process.exit(0)
 })
+
+setInterval(async () => {
+  let serverData = (await database.serverData.get()) || {
+    posts: [],
+    redditGeneratePost: {
+      enabled: false,
+      queueMax: 3,
+      waitTime: 24 * 60 * 60e3,
+      subreddits: ['all'],
+    },
+  }
+
+  let post = serverData.posts[0]
+  if (post.time <= Date.now()) {
+    serverData.posts.shift()
+    if (!ws) {
+      log('No connected client')
+    } else {
+      i++
+      ws.send(JSON.stringify({ i, t: 'cmd', cmd: 'createPost', args: [post.url, post.caption] }))
+    }
+  }
+
+  if (serverData.redditGeneratePost.enabled && serverData.posts.length < serverData.redditGeneratePost.queueMax) {
+    let post = await redditGeneratePost(serverData.redditGeneratePost.subreddits)
+    post.time = Date.now() + serverData.redditGeneratePost.waitTime
+    serverData.posts.push(post)
+    serverData.posts.sort((a, b) => a.time - b.time)
+  }
+
+  database.serverData.set(serverData)
+}, 60e3)
