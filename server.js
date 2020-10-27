@@ -348,7 +348,7 @@ wss.on('connection', async (ws, req) => {
       if (!account) throw new Error('Account not found')
     })
 
-    conn.handle('queue.list', () => {
+    conn.handle('queue.get', () => {
       if (!account) throw new Error('Not logged in')
       account.posts.sort((a, b) => a.time - b.time)
       return account.posts
@@ -373,6 +373,25 @@ wss.on('connection', async (ws, req) => {
     conn.handle('queue.remove', ({ id }) => {
       if (!account) throw new Error('Not logged in')
       account.posts.splice(id, 1)
+    })
+
+    conn.handle('postGen.configGet', () => {
+      if (!account) throw new Error('Not logged in')
+      return account.postGen
+    })
+
+    conn.handle('postGen.configSet', ({ key, value }) => {
+      if (!account) throw new Error('Not logged in')
+      if (
+        key === 'enabled' && typeof value === 'boolean' ||
+        key === 'queueMax' && typeof value === 'number' ||
+        key === 'subreddits' && Array.isArray(value) && value.every(r => typeof r === 'string') ||
+        key === 'dailyScheduledTimes' && Array.isArray(value) && value.every(r => typeof r === 'number')
+      ) {
+        account.postGen[key] = value
+      } else {
+        throw new Error('Invalid key or value')
+      }
     })
 
     return

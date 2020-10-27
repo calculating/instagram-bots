@@ -6,13 +6,9 @@ const WebSocket = require('ws')
 
 const puppeteer = require('puppeteer-extra')
 
-const Connection = require('./connection')
-const config = require('./client-config')
-const { sleep, random, delay, downloadFile } = require('./shared')
-
-let stealth = require('puppeteer-extra-plugin-stealth')()
-stealth.enabledEvasions.delete('user-agent-override')
-puppeteer.use(stealth)
+const puppeteerStealth = require('puppeteer-extra-plugin-stealth')()
+puppeteerStealth.enabledEvasions.delete('user-agent-override')
+puppeteer.use(puppeteerStealth)
 
 puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-override')({
   userAgent: puppeteer.pptr.devices['Pixel 2'].userAgent.replace(/Chrome\/[^ ]+/, 'Chrome/85.0.4182.0'),
@@ -21,6 +17,10 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-overri
 }))
 
 puppeteer.use(require('puppeteer-extra-plugin-repl')())
+
+const Connection = require('./connection')
+const config = require('./client-config')
+const { sleep, random, delay, downloadFile } = require('./shared')
 
 let database = {
   username: config.username,
