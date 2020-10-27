@@ -107,14 +107,14 @@ rl.on('line', async line => {
           break
         case 'set':
         case 's':
-          if (args[0] !== 'queueMax' && args[0] !== 'subreddits' && args[0] !== 'dailyScheduledTimes') {
-            log('Only the queueMax, subreddits, and the dailyScheduledTimes can be set')
+          if (args[0] !== 'queueMax' && args[0] !== 'category' && args[0] !== 'dailyScheduledTimes') {
+            log('Only the queueMax, category, and the dailyScheduledTimes can be set')
             break
           }
           let value =
             args[0] === 'queueMax' ? +args[1] :
-              args[0] === 'subreddits' ? args.slice(1) :
-                args.slice(1).map(t => getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + t))))
+              args[0] === 'category' ? args[1] :
+                args.slice(1).map(t => +t)
           await conn.send('postGen.configSet', { key: args[0], value })
           break
         case 'reschedule':
@@ -144,9 +144,8 @@ rl.on('line', async line => {
         'postGen disable                         Disable automatic post generation',
         'postGen set queueMax <number>           Set the maximum number of posts that the',
         '                                        queue can have before generation stops',
-        'postGen set subreddits <sub> <sub> ...  Set the list of subreddits to take posts',
-        '                                        from (the r/ is unnecessary)',
-        'postGen reschedule <time> <time> ...    Set the times of day for post generation',
+        'postGen set category <category>         Set the category of posts to generate',
+        'postGen reschedule [time] [time] ...    Set the times of day for post generation',
         '',
         'Note: Arguments containing spaces or quotation marks should be put in quotes.',
       ].join('\n'))

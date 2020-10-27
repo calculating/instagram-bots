@@ -34,7 +34,25 @@ let database = {
   },
 }
 
-const redditGeneratePost = async (subreddits = ['all'], duplicatesToAvoid) => {
+const redditCategories = {
+  global: {
+    exclude: /instagram|reddit/i,
+  },
+  generic: {
+    subreddits: ['all'],
+  },
+  memes: {
+    subreddits: ['surrealmemes'],
+  },
+  travel: {
+    subreddits: ['travel'],
+    exclude: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
+  },
+}
+
+const redditGeneratePost = async (category, duplicatesToAvoid) => {
+  let { subreddits, exclude } = redditCategories[category]
+
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
   let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
   let time = 'week' // * = hour, day, week, month, year, all
@@ -47,13 +65,19 @@ const redditGeneratePost = async (subreddits = ['all'], duplicatesToAvoid) => {
 
   let post = null
   for (let { data } of res.data.children) {
-    if (data.title && data.url && ['.png', '.jpg', '.jpeg', '.gif', '.webm', '.mp4'].includes(path.extname(data.url)) && duplicatesToAvoid.every(duplicate => duplicate.url !== data.url)) {
-      post = {
-        url: data.url,
-        caption: data.title,
-      }
-      break
+    if (!data.title || !data.url) continue
+
+    if (!['.png', '.jpg', '.jpeg', '.gif', '.webm', '.mp4'].includes(path.extname(data.url))) continue
+    if (redditCategories.global.exclude.test(data.title)) continue
+    if (exclude && exclude.test(data.title)) continue
+
+    if (duplicatesToAvoid.some(duplicate => duplicate.url === data.url)) continue
+
+    post = {
+      url: data.url,
+      caption: data.title,
     }
+    break
   }
   if (!post)
     throw new Error('No valid post found')
@@ -385,7 +409,7 @@ wss.on('connection', async (ws, req) => {
       if (
         key === 'enabled' && typeof value === 'boolean' ||
         key === 'queueMax' && typeof value === 'number' ||
-        key === 'subreddits' && Array.isArray(value) && value.every(r => typeof r === 'string') ||
+        key === 'category' && typeof value === 'string' ||
         key === 'dailyScheduledTimes' && Array.isArray(value) && value.every(r => typeof r === 'number')
       ) {
         account.postGen[key] = value
@@ -435,7 +459,7 @@ setInterval(async () => {
     if (postGen.dailyScheduledTimes.length === 0) continue
 
 
-    let post = await redditGeneratePost(postGen.subreddits, account.posts).catch(err => console.log(err))
+    let post = await redditGeneratePost(postGen.category, account.posts).catch(err => console.log(err))
     if (!post) continue
 
     let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
