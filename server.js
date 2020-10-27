@@ -6,6 +6,9 @@ const url = require('url')
 
 const WebSocket = require('ws')
 
+const Connection = require('./connection')
+const { sleep, random, delay, downloadFile, requestJson } = require('./shared')
+
 let database = {
   serverData: { // TODO: this is done badly
     cache: null,
@@ -30,8 +33,6 @@ let database = {
     },
   },
 }
-
-const { sleep, random, delay, downloadFile, requestJson } = require('./shared')
 
 const redditGeneratePost = async (subreddits = ['all'], duplicatesToAvoid) => {
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
@@ -184,47 +185,19 @@ requestJson('https://www.reddit.com/r/all/top.json?raw_json=1&count=0&limit=5&t=
 
 const Puppet = class {
   constructor(ws) {
-    this.ws = ws
-    this.wsCallbacks = {}
-    this.i = 0
-
     this.token = null
-    this.mode = 'puppet'
-
-    ws.on('message', data => {
-      if (typeof data !== 'string') {
-        ws.close(1003)
-        return
-      }
-      let message = null
-      try {
-        message = JSON.parse(data)
-      } catch (e) {}
-      if (message == null || typeof message !== 'object') {
-        ws.close(1008)
-        return
-      }
-
-      if (message.t === 'ack' && this.wsCallbacks[message.i]) {
-        this.wsCallbacks[message.i](message.res)
-        delete this.wsCallbacks[message.i]
-      } else if (message.t === 'auth') {
-        this.token = message.token
-        this.mode = message.mode
-      }
+    this.conn = new Connection(ws)
+    this.conn.handle('auth', async token => {
+      this.token = token
+      await this.launch(false)
+      await this.load()
+      await this.login()
     })
   }
 
   // WebSocket functions
-  async cmd(cmd, ...args) {
-    let i = this.i++
-
-    this.ws.send(JSON.stringify({ i, t: 'cmd', cmd, args }))
-
-    return new Promise((resolve, reject) => {
-      this.wsCallbacks[i] = resolve
-      setTimeout(reject, 60e3, new Error('Timed out'))
-    })
+  cmd(cmd, ...args) {
+    return this.conn.send('cmd', { cmd, args })
   }
 
   // basic browser/session initiation functions
@@ -363,51 +336,45 @@ wss.on('connection', async (ws, req) => {
     await database.serverData.set(serverData)
 
     let token = null // TODO: this is kinda bad?
-    ws.on('message', data => {
-      if (typeof data !== 'string') {
-        ws.close(1003)
-        return
-      }
-      let message = null
-      try {
-        message = JSON.parse(data)
-      } catch (e) {}
-      if (message == null || typeof message !== 'object') {
-        ws.close(1008)
-        return
-      }
-      console.log(message)
+    let account = null
 
-      let account = serverData.accounts[token]
-      if (!account && message.t !== 'auth') {
-        ws.close(1000)
-        return
-      }
+    let conn = new Connection(ws)
 
-      switch (message.t) {
-        case 'auth':
-          token = message.token
-          break
-        case 'queue.list':
-          ws.send(JSON.stringify({
-            t: 'queue.list',
-            res: account.posts,
-          }))
-          break
-        case 'queue.add':
-          break
-        case 'queue.set':
-          account.posts[message.id][message.key] = message.value // TODO: improve this
-          break
-        case 'queue.delete':
-          account.posts.splice(message.id, 1)
-          ws.send(JSON.stringify({
-            t: 'queue.list',
-            res: account.posts,
-          }))
-          break
-      }
+    conn.handle('auth', newToken => {
+      if (typeof newToken !== 'string')
+        throw new Error('Token must be a string')
+      token = newToken
+      account = serverData.accounts[token]
+      if (!account) throw new Error('Account not found')
     })
+
+    conn.handle('queue.list', () => {
+      if (!account) throw new Error('Not logged in')
+      account.posts.sort((a, b) => a.time - b.time)
+      return account.posts
+    })
+
+    /*conn.handle('queue.add', post => {
+      if (!account) throw new Error('Not logged in')
+      if (typeof post.url !== 'string' || typeof post.caption !== 'string' || typeof post.time !== 'number')
+        throw new Error('Invalid post data')
+      account.posts.push({ url: post.url, caption: post.caption, time: post.time })
+    })*/
+
+    conn.handle('queue.set', ({ id, key, value }) => {
+      if (!account) throw new Error('Not logged in')
+      let post = account.posts[id]
+      if (!post) throw new Error('Post not found')
+      if (typeof value !== ({ /*url: 'string',*/ caption: 'string', time: 'number' })[key])
+        throw new Error('Invalid key or value')
+      post[key] = value
+    })
+
+    conn.handle('queue.remove', ({ id }) => {
+      if (!account) throw new Error('Not logged in')
+      account.posts.splice(id, 1)
+    })
+
     return
   }
 
@@ -438,12 +405,7 @@ setInterval(async () => {
     let post = account.posts[0]
     if (post.time <= Date.now()) {
       account.posts.shift()
-      if (!ws) {
-        console.log('No connected client')
-      } else {
-        i++
-        puppet.createPost(post.url, post.caption)
-      }
+      await puppet.createPost(post.url, post.caption)
     }
   }
 

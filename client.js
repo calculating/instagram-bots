@@ -6,7 +6,8 @@ const WebSocket = require('ws')
 
 const puppeteer = require('puppeteer-extra')
 
-const config = require('./client-config.json')
+const Connection = require('./connection')
+const config = require('./client-config')
 const { sleep, random, delay, downloadFile } = require('./shared')
 
 let stealth = require('puppeteer-extra-plugin-stealth')()
@@ -369,48 +370,32 @@ const Puppet = class {
 }
 
 let puppet = new Puppet()
-let ws = new WebSocket(`ws://${database.server}/`)
+let conn = new Connection(new WebSocket(`ws://${database.server}/`))
 
-ws.on('open', () => {
+conn.on('open', async () => {
   console.log('Connected to server')
-  ws.send(JSON.stringify({ t: 'auth', token: config.token, mode: 'puppet' }))
+  await conn.send('auth', config.token)
 })
 
-ws.on('message', async data => {
-  let message
-  try {
-    message = JSON.parse(data)
-  } catch (e) {}
-  if (message == null || typeof message !== 'object') {
-    console.warn('Invalid packet received', data)
-    return
-  }
-  console.log(message)
-
-  let res = null
-
-  if (message.t === 'cmd') {
-    try {
-      res = await (message.args ? puppet[message.cmd](...message.args) : puppet[message.cmd]())
-    } catch (err) {
-      console.log(err)
-      res = err.message
-    }
-  } else if (message.t === 'exit') {
-    process.exit()
-  }
-
-  if (res != null)
-    ws.send(JSON.stringify({ i: message.i, t: 'ack', res }))
-  else
-    ws.send(JSON.stringify({ i: message.i, t: 'ack' }))
+conn.handle('cmd', async ({ cmd, args }) => {
+  // console.log(cmd, args)
+  puppet[cmd](...args)
 })
 
-ws.on('close', () => {
+conn.handle('exit', async () => {
+  setTimeout(() => process.exit(0), 200)
+})
+
+conn.on('close', () => {
   console.log('Disconnected from server')
+
+  puppet.close().then(() => process.exit(0)).catch(err => {
+    console.log(err)
+    process.exit(1)
+  })
 })
 
-ws.on('error', console.error)
+conn.on('error', console.error)
 
 let exiting = false
 for (let signal of ['SIGINT', 'SIGHUP', 'SIGTERM'])
@@ -420,11 +405,7 @@ for (let signal of ['SIGINT', 'SIGHUP', 'SIGTERM'])
 
     setTimeout(() => process.exit(1), 1000)
 
-    ws.close(1001)
-    puppet.close().then(() => process.exit()).catch(err => {
-      console.log(err)
-      process.exit(1)
-    })
+    conn.close(1001)
   })
 
 process.stdin.resume()
