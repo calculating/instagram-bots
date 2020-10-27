@@ -57,7 +57,7 @@ const redditGeneratePost = async (category, duplicatesToAvoid) => {
   let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
   let time = 'week' // * = hour, day, week, month, year, all
 
-  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/hot/.json?raw_json=1&count=0&limit=25&t=${time}`, {
+  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/${sorting}.json?raw_json=1&count=0&limit=25&t=${time}`, {
     headers: {
       'User-Agent': 'node.js:reddit-scraper:v0',
     },
@@ -252,6 +252,16 @@ const Puppet = class {
     return res
   }
 
+  async scrollTo(xPathExpression, deltaY, targetY, config = {}) {
+    config.all = false
+    await this.cmd('scrollTo', xPathExpression, deltaY, targetY, config)
+  }
+
+  async fetchData(xPathExpression, type = 'text', config = {}) {
+    config.all = false
+    return this.cmd('fetchData', xPathExpression, type, config)
+  }
+
   // main actions
   async login() {
     this.cmd('login')
@@ -279,13 +289,13 @@ const Puppet = class {
   }
 
   async postGetMediaSrc() {
-    let media = await this.select('//article/div/div[@role="button"]//img | //article/div/div//*[img]/video')
-
-    return media.evaluate(node => node.getAttribute('src'))
+    return this.fetchData('//article/div/div[@role="button"]//img | //article/div/div//*[img]/video', 'src')
   }
 
   async postGetCaption() {
-    return this.cmd('postGetCaption')
+    await this.tap('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span/span/button[text()="more"]', null, { required: false })
+
+    return this.fetchData('//article/div/div/div[position()=1]/div[position()=1]/div[position()=1][a[position()=1]]/span', 'text', { required: false })
   }
 
   async goToSelfProfile() {
@@ -306,7 +316,8 @@ const Puppet = class {
   }
 
   async goToOldestPostFromProfile() {
-    return this.cmd('goToOldestPostFromProfile')
+    await this.scrollTo('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]', 400, 600)
+    await this.tap('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]', 'network')
   }
 
   async followAtProfile() {
@@ -317,28 +328,16 @@ const Puppet = class {
     return this.cmd('createPost', path, caption)
   }
 
-  /*async cyclePost() {
+  async cyclePost() {
     await this.goToSelfProfile()
     await this.goToOldestPostFromProfile()
 
     let src = await this.postGetMediaSrc()
     let caption = await this.postGetCaption()
 
-    // hope that the CDN servers aren't equipped with bot detectors...
-    // TODO: https://github.com/puppeteer/puppeteer/issues/299
-    let path = `data/tmp-file${path.extname(src)}`
-    await downloadFile(src, path)
-
     await this.postDelete()
-    await this.createPost(path, caption)
+    await this.createPost(src, caption)
   }
-
-  async cycleAllPosts() {
-    while (true) {
-      await this.cyclePost()
-      await sleep(random(45 * 60e3, 60 * 60e3))
-    }
-  }*/
 
   async unfollowAll() {
     await this.goToSelfProfile()
@@ -418,6 +417,26 @@ wss.on('connection', async (ws, req) => {
       }
     })
 
+    conn.handle('postRecycle.configGet', () => {
+      if (!account) throw new Error('Not logged in')
+      return account.postRecycle
+    })
+
+    conn.handle('postRecycle.configSet', ({ key, value }) => {
+      if (!account) throw new Error('Not logged in')
+      if (
+        key === 'enabled' && typeof value === 'boolean' ||
+        key === 'queueMax' && typeof value === 'number' ||
+        key === 'interval' && typeof value === 'number'
+      ) {
+        account.postRecycle[key] = value
+      } else {
+        throw new Error('Invalid key or value')
+      }
+    })
+
+    conn.handle('sudo.skipWait', () => skipWait()) // TODO: debug command?
+
     return
   }
 
@@ -433,7 +452,7 @@ wss.on('connection', async (ws, req) => {
 
 const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
 
-setInterval(async () => {
+let run = async () => {
   let serverData = (await database.serverData.get()) || { accounts: {} }
   await database.serverData.set(serverData)
 
@@ -446,7 +465,7 @@ setInterval(async () => {
     if (!account) continue
 
     let post = account.posts[0]
-    if (post.time <= Date.now()) {
+    if (post && post.time <= Date.now()) {
       account.posts.shift()
       await puppet.createPost(post.url, post.caption)
     }
@@ -457,7 +476,6 @@ setInterval(async () => {
     if (!postGen.enabled) continue
     if (account.posts.length >= postGen.queueMax) continue
     if (postGen.dailyScheduledTimes.length === 0) continue
-
 
     let post = await redditGeneratePost(postGen.category, account.posts).catch(err => console.log(err))
     if (!post) continue
@@ -476,5 +494,41 @@ setInterval(async () => {
     console.log('Generated post', post)
   }
 
+  for (let [token, account] of Object.entries(serverData.accounts)) {
+    let postRecycle = account.postRecycle || { enabled: false }
+    if (!postRecycle.enabled) continue
+    if (account.posts.length >= postRecycle.queueMax) continue
+
+    let puppet = puppets.find(r => r.token === token)
+    if (!puppet) continue
+
+    await puppet.goToSelfProfile()
+    await puppet.goToOldestPostFromProfile()
+
+    let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
+    let post = {
+      url: await puppet.postGetMediaSrc(),
+      caption: await puppet.postGetCaption(),
+      time: lastPostTime + postRecycle.interval,
+    }
+
+    await puppet.postDelete()
+
+    account.posts.push(post)
+    console.log('Recycled post', post)
+  }
+
   await database.serverData.set(serverData)
-}, 20e3)
+}
+
+let skipWait = () => {}
+
+;(async () => {
+  while (true) {
+    await run()
+    await Promise.race([
+      sleep(60e3),
+      new Promise(resolve => skipWait = resolve)
+    ])
+  }
+})()

@@ -175,6 +175,35 @@ const Puppet = class {
     return !!element
   }
 
+  async scrollTo(xPathExpression, deltaY, targetY, config = {}) {
+    config.all = false
+    while (true) {
+      let element = await this.select(xPathExpression, config)
+
+      let { y } = await element.boundingBox()
+      if (y <= targetY) {
+        await element.tap()
+        await delay('network')
+        break
+      }
+
+      await this.page.mouse.wheel({ deltaY })
+      await delay('network')
+    }
+  }
+
+  async fetchData(xPathExpression, type = 'text', config = {}) {
+    config.all = false
+    let element = await this.select(xPathExpression, config)
+    if (!element) return null
+
+    if (type === 'src')
+      return element.evaluate(node => node.getAttribute('src'))
+    if (type === 'text')
+      return element.evaluate(node => node.innerText)
+    return null
+  }
+
   // main actions
   async login(username = database.username, password = database.password) {
     if (!await this.tap('//button[contains(., "Log In")]', 'fast', { required: false })) return
@@ -238,21 +267,8 @@ const Puppet = class {
   }
 
   async goToOldestPostFromProfile() {
-    let oldestPost = null
-    while (true) {
-      let oldestKnownPost = await this.select('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]')
-
-      let { y } = await oldestKnownPost.boundingBox()
-      if (y <= 600) {
-        oldestPost = oldestKnownPost
-        break
-      }
-
-      await this.page.mouse.wheel({ deltaY: random(300, 500) })
-      await delay('network')
-    }
-    await oldestPost.tap()
-    await delay('network')
+    await this.scrollTo('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]', 400, 600)
+    await this.tap('(//article/div[position()=1]/div/div[position()=last()]/div/a)[last()]', 'network')
   }
 
   async followAtProfile() {

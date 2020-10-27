@@ -129,6 +129,41 @@ rl.on('line', async line => {
       }
       break
 
+    case 'postRecycle':
+    case 'pr':
+      switch (args.shift() || null) {
+        case null:
+          let config = await conn.send('postRecycle.configGet')
+          console.log('Config', config)
+          break
+        case 'enable':
+          await conn.send('postRecycle.configSet', { key: 'enabled', value: true })
+          break
+        case 'disable':
+          await conn.send('postRecycle.configSet', { key: 'enabled', value: false })
+          break
+        case 'set':
+        case 's':
+          if (args[0] !== 'queueMax' && args[0] !== 'interval') {
+            log('Only the queueMax and interval can be set')
+            break
+          }
+          let value =
+            args[0] === 'queueMax' ? +args[1] :
+              +args[1] * 60 * 60e3
+          await conn.send('postRecycle.configSet', { key: args[0], value })
+          break
+        default:
+          log('Invalid subcommand for queue')
+          break
+      }
+      break
+
+    case 'skipWait':
+    case 'now':
+      await conn.send('sudo.skipWait')
+      break
+
     case 'help':
       // [......][......][......][......][......][......][......][......][......][......]
       log([
@@ -146,6 +181,13 @@ rl.on('line', async line => {
         '                                        queue can have before generation stops',
         'postGen set category <category>         Set the category of posts to generate',
         'postGen reschedule [time] [time] ...    Set the times of day for post generation',
+        '',
+        'postRecycle                             View the current post recycling config',
+        'postRecycle enable                      Enable automatic post recycling',
+        'postRecycle disable                     Disable automatic post recycling',
+        'postRecycle set queueMax <number>       Set the maximum number of posts that the',
+        '                                        queue can have before recycling stops',
+        'postRecycle set interval <hours>        Set the time between recycles in hours',
         '',
         'Note: Arguments containing spaces or quotation marks should be put in quotes.',
       ].join('\n'))
