@@ -1,19 +1,25 @@
 const fs = require('fs').promises
 const https = require('https')
+const path = require('path')
 const readline = require('readline')
+const url = require('url')
 
 const WebSocket = require('ws')
 
 let database = {
-  serverData: {
+  serverData: { // TODO: this is done badly
+    cache: null,
     async get() {
+      if (this.cache) return this.cache
       try {
-        return JSON.parse(await fs.readFile(__dirname + '/data/serverData.json'))
+        this.cache = JSON.parse(await fs.readFile(__dirname + '/data/serverData.json'))
+        return this.cache
       } catch (err) {
         return null
       }
     },
     async set(data) {
+      this.cache = data
       try {
         await fs.mkdir(__dirname + '/data')
       } catch (err) {
@@ -25,39 +31,29 @@ let database = {
   },
 }
 
-const request = async (...args) => new Promise((resolve, reject) => {
-  let req = https.request(...args, res => {
-    let chunks = []
-    res.on('data', data => chunks.push(data))
-    res.on('end', () => resolve(Buffer.concat(chunks)))
-    res.on('error', reject)
-  })
-  req.on('error', reject)
-  req.end()
-})
+const { sleep, random, delay, downloadFile, requestJson } = require('./shared')
 
-const requestJson = async (...args) => JSON.parse(await request(...args))
-
-const redditGeneratePost = async (subreddits = ['all']) => {
+const redditGeneratePost = async (subreddits = ['all'], duplicatesToAvoid) => {
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
   let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
   let time = 'week' // * = hour, day, week, month, year, all
 
-  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/hot/.json?raw_json=1&count=0&limit=10&t=${time}`, {
+  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/hot/.json?raw_json=1&count=0&limit=25&t=${time}`, {
     headers: {
       'User-Agent': 'node.js:reddit-scraper:v0',
     },
   })
 
   let post = null
-  for (let { data } of res.data.children)
-    if (data.url && data.title) {
+  for (let { data } of res.data.children) {
+    if (data.title && data.url && ['.png', '.jpg', '.jpeg', '.gif', '.webm', '.mp4'].includes(path.extname(data.url)) && duplicatesToAvoid.every(duplicate => duplicate.url !== data.url)) {
       post = {
         url: data.url,
         caption: data.title,
       }
       break
     }
+  }
   if (!post)
     throw new Error('No valid post found')
 
@@ -70,7 +66,7 @@ requestJson('https://www.reddit.com/r/all/top.json?raw_json=1&count=0&limit=5&t=
     'User-Agent': 'node.js:reddit-scraper:v0',
   },
 }).then(r => {
-  log(r.data.children)
+  console.log(r.data.children)
   {
     kind: 't3',
     data: {
@@ -183,109 +179,277 @@ requestJson('https://www.reddit.com/r/all/top.json?raw_json=1&count=0&limit=5&t=
       is_video: false
     }
   }
-}).catch(log)
+}).catch(console.log)
 */
 
-let log = (...args) => {
-  rl.output.write('\x1b[2K\r')
-  console.log(...args)
-  rl._refreshLine()
+const Puppet = class {
+  constructor(ws) {
+    this.ws = ws
+    this.wsCallbacks = {}
+    this.i = 0
+
+    this.token = null
+    this.mode = 'puppet'
+
+    ws.on('message', data => {
+      if (typeof data !== 'string') {
+        ws.close(1003)
+        return
+      }
+      let message = null
+      try {
+        message = JSON.parse(data)
+      } catch (e) {}
+      if (message == null || typeof message !== 'object') {
+        ws.close(1008)
+        return
+      }
+
+      if (message.t === 'ack' && this.wsCallbacks[message.i]) {
+        this.wsCallbacks[message.i](message.res)
+        delete this.wsCallbacks[message.i]
+      } else if (message.t === 'auth') {
+        this.token = message.token
+        this.mode = message.mode
+      }
+    })
+  }
+
+  // WebSocket functions
+  async cmd(cmd, ...args) {
+    let i = this.i++
+
+    this.ws.send(JSON.stringify({ i, t: 'cmd', cmd, args }))
+
+    return new Promise((resolve, reject) => {
+      this.wsCallbacks[i] = resolve
+      setTimeout(reject, 60e3, new Error('Timed out'))
+    })
+  }
+
+  // basic browser/session initiation functions
+  async launch(headless = true) {
+    await this.cmd('launch', headless)
+  }
+
+  async load() {
+    await this.cmd('load')
+  }
+
+  async close() {
+    await this.cmd('close')
+  }
+
+  // xPath and base interaction functions
+  async tap(xPathExpression, delayType = false, config = {}) {
+    config.all = false
+    let res = await this.cmd('tap', xPathExpression, false, config)
+    if (res && delayType) await delay(delayType)
+    return res
+  }
+
+  async type(xPathExpression, content, delayType = null, config = {}) {
+    config.all = false
+    let res = await this.cmd('type', xPathExpression, content, false, config)
+    if (res && delayType) await delay(delayType)
+    return res
+  }
+
+  // main actions
+  async login() {
+    this.cmd('login')
+  }
+
+  async eliminatePopUps() {
+    await this.tap('//*[@role="dialog"]//div[div/h2[contains(., "Home screen")]]/div/button[contains(., "Cancel")]', 'fast', { required: false })
+    await this.tap('//*[@role="dialog"]//div[div/h2[contains(., "Turn on Notifications")]]/div/button[contains(., "Not Now")]', 'fast', { required: false })
+    await this.tap('//div[div/button[contains(., "Use the App")]]/div/button[contains(., "Not Now") or //*[@aria-label="Close"]]', 'fast', { required: false })
+  }
+
+  async backButton() {
+    await this.tap('//header//*[@aria-label="Back"]', 'network')
+  }
+
+  async postComment(content) {
+    await this.type('//form/textarea[contains(@aria-label, "Add a comment")]', content, 'fast')
+    await this.tap('//form/button[text()="Post"]', 'network')
+  }
+
+  async postDelete() {
+    await this.tap('//*[@aria-label="More options"]', 'fast')
+    await this.tap('//div/button[text()="Delete"]', 'fast')
+    await this.tap('//div/button[text()="Delete"]', 'network')
+  }
+
+  async postGetMediaSrc() {
+    let media = await this.select('//article/div/div[@role="button"]//img | //article/div/div//*[img]/video')
+
+    return media.evaluate(node => node.getAttribute('src'))
+  }
+
+  async postGetCaption() {
+    return this.cmd('postGetCaption')
+  }
+
+  async goToSelfProfile() {
+    await this.tap('//div[position()=5]/a/span/img', 'network')
+  }
+
+  async goToFollowersFromProfile() {
+    await this.tap('//ul/li[position()=2]/a[contains(., "followers")]', 'network')
+  }
+
+  async goToFollowingFromProfile() {
+    await this.tap('//ul/li[position()=3]/a[contains(., "following")]', 'network')
+  }
+
+  async unfollowFirstAtFollowing() {
+    if (await this.tap('//div/button[text()="Following"]', 'fast', { required: false }))
+      await this.tap('//*[@role="dialog"]//div/button[text()="Unfollow"]', 'network')
+  }
+
+  async goToOldestPostFromProfile() {
+    return this.cmd('goToOldestPostFromProfile')
+  }
+
+  async followAtProfile() {
+    await this.tap('//span/button[text()="Follow" or text()="Follow Back"]', 'network', { required: false })
+  }
+
+  async createPost(path, caption) {
+    return this.cmd('createPost', path, caption)
+  }
+
+  /*async cyclePost() {
+    await this.goToSelfProfile()
+    await this.goToOldestPostFromProfile()
+
+    let src = await this.postGetMediaSrc()
+    let caption = await this.postGetCaption()
+
+    // hope that the CDN servers aren't equipped with bot detectors...
+    // TODO: https://github.com/puppeteer/puppeteer/issues/299
+    let path = `data/tmp-file${path.extname(src)}`
+    await downloadFile(src, path)
+
+    await this.postDelete()
+    await this.createPost(path, caption)
+  }
+
+  async cycleAllPosts() {
+    while (true) {
+      await this.cyclePost()
+      await sleep(random(45 * 60e3, 60 * 60e3))
+    }
+  }*/
+
+  async unfollowAll() {
+    await this.goToSelfProfile()
+    await this.goToFollowingFromProfile()
+    while (true) {
+      await this.unfollowFirstAtFollowing()
+      await sleep(random(45 * 60e3, 60 * 60e3))
+    }
+  }
 }
 
 let wss = new WebSocket.Server({ port: 6000 })
 
-let ws = null
-let i = -1
+let puppets = []
+wss.on('connection', async (ws, req) => {
+  console.log('New connection')
+  if (url.parse(req.url).pathname.replace(/\/+$/, '') === '/api/alpha') {
+    let serverData = (await database.serverData.get()) || { accounts: {} }
+    await database.serverData.set(serverData)
 
-wss.on('connection', newWs => {
-  log('New connection')
-  if (ws) ws.close()
+    let token = null // TODO: this is kinda bad?
+    ws.on('message', data => {
+      if (typeof data !== 'string') {
+        ws.close(1003)
+        return
+      }
+      let message = null
+      try {
+        message = JSON.parse(data)
+      } catch (e) {}
+      if (message == null || typeof message !== 'object') {
+        ws.close(1008)
+        return
+      }
+      console.log(message)
 
-  ws = newWs
-  i = -1
-  ws.on('message', data => {
-    let message
-    try {
-      message = JSON.parse(data)
-    } catch (e) {}
-    if (message == null || typeof message !== 'object') {
-      console.warn('Invalid packet received', data)
-      return
-    }
-    log(message)
+      let account = serverData.accounts[token]
+      if (!account && message.t !== 'auth') {
+        ws.close(1000)
+        return
+      }
 
-    if (message.t === 'ack') {
-      if (message.i !== i)
-        log(`Mismatch in acknowledgement index: expecting ${i} but received ${message.i}`)
-      rl.prompt()
-    }
-  })
+      switch (message.t) {
+        case 'auth':
+          token = message.token
+          break
+        case 'queue.list':
+          ws.send(JSON.stringify({
+            t: 'queue.list',
+            res: account.posts,
+          }))
+          break
+        case 'queue.add':
+          break
+        case 'queue.set':
+          account.posts[message.id][message.key] = message.value // TODO: improve this
+          break
+        case 'queue.delete':
+          account.posts.splice(message.id, 1)
+          ws.send(JSON.stringify({
+            t: 'queue.list',
+            res: account.posts,
+          }))
+          break
+      }
+    })
+    return
+  }
+
+  let puppet = new Puppet(ws)
+  puppets.push(puppet)
   ws.on('close', code => {
-    log('Connection closed', code)
-    ws = null
+    console.log('Connection closed', code)
+    let i = puppets.indexOf(puppet)
+    if (i !== -1)
+      puppets.splice(i, 1)
   })
-})
-
-let rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  prompt: '> ',
-})
-
-rl.prompt()
-
-rl.on('line', line => {
-  let [all, cmd, argsString] = line.match(/^([^\s]*)(?:\s+([^]*))?$/)
-  let args = []
-  if (argsString) {
-    try {
-      args = JSON.parse(`[${argsString}]`)
-    } catch (err) {
-      log('Invalid arguments')
-      return
-    }
-  }
-  if (!ws) {
-    log('No connected client')
-  } else {
-    i++
-    ws.send(JSON.stringify({ i, t: 'cmd', cmd, args }))
-  }
-})
-
-rl.on('close', () => {
-  console.log()
-  process.exit(0)
 })
 
 setInterval(async () => {
-  let serverData = (await database.serverData.get()) || {
-    posts: [],
-    redditGeneratePost: {
-      enabled: false,
-      queueMax: 3,
-      waitTime: 24 * 60 * 60e3,
-      subreddits: ['all'],
-    },
-  }
+  let serverData = (await database.serverData.get()) || { accounts: {} }
+  await database.serverData.set(serverData)
 
-  let post = serverData.posts[0]
-  if (post.time <= Date.now()) {
-    serverData.posts.shift()
-    if (!ws) {
-      log('No connected client')
-    } else {
-      i++
-      ws.send(JSON.stringify({ i, t: 'cmd', cmd: 'createPost', args: [post.url, post.caption] }))
+  for (let puppet of puppets) {
+    let account = serverData.accounts[puppet.token]
+    if (!account) continue
+
+    let post = account.posts[0]
+    if (post.time <= Date.now()) {
+      account.posts.shift()
+      if (!ws) {
+        console.log('No connected client')
+      } else {
+        i++
+        puppet.createPost(post.url, post.caption)
+      }
     }
   }
 
-  if (serverData.redditGeneratePost.enabled && serverData.posts.length < serverData.redditGeneratePost.queueMax) {
-    let post = await redditGeneratePost(serverData.redditGeneratePost.subreddits)
-    post.time = Date.now() + serverData.redditGeneratePost.waitTime
-    serverData.posts.push(post)
-    serverData.posts.sort((a, b) => a.time - b.time)
+  for (let account of Object.values(serverData.accounts)) {
+    if (account.redditGeneratePost.enabled && account.posts.length < account.redditGeneratePost.queueMax) {
+      let post = await redditGeneratePost(account.redditGeneratePost.subreddits, account.posts)
+      post.time = Date.now() + account.redditGeneratePost.waitTime
+      account.posts.push(post)
+      account.posts.sort((a, b) => a.time - b.time)
+      console.log('Generated post', post)
+    }
   }
 
   await database.serverData.set(serverData)
-}, 60e3)
+}, 20e3)

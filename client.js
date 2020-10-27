@@ -1,11 +1,13 @@
 const fs = require('fs').promises
-const fsSync = require('fs')
 const https = require('https')
 const path = require('path')
 
 const WebSocket = require('ws')
 
 const puppeteer = require('puppeteer-extra')
+
+const config = require('./client-config.json')
+const { sleep, random, delay, downloadFile } = require('./shared')
 
 let stealth = require('puppeteer-extra-plugin-stealth')()
 stealth.enabledEvasions.delete('user-agent-override')
@@ -20,9 +22,9 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-overri
 puppeteer.use(require('puppeteer-extra-plugin-repl')())
 
 let database = {
-  username: '',
-  password: '',
-  server: 'localhost:6000',
+  username: config.username,
+  password: config.password,
+  server: config.server,
   cookies: {
     async get() {
       try {
@@ -43,36 +45,27 @@ let database = {
       await fs.writeFile(__dirname + '/data/cookies.json', JSON.stringify(array))
     },
   },
+  posts: {
+    async get() {
+      try {
+        return JSON.parse(await fs.readFile(__dirname + '/data/posts.json'))
+      } catch (err) {
+        return []
+      }
+    },
+    async set(array) {
+      if (!Array.isArray(array))
+        throw new Error('Posts must be an array')
+      try {
+        await fs.mkdir(__dirname + '/data')
+      } catch (err) {
+        if (err.code !== 'EEXIST')
+          throw err
+      }
+      await fs.writeFile(__dirname + '/data/posts.json', JSON.stringify(array))
+    },
+  },
 }
-
-let sleep = time => new Promise(resolve => setTimeout(resolve, time))
-
-let random = (min, max) => min + (max - min) * (Math.random() + Math.random() + Math.random()) / 3
-
-let delay = async type => {
-  if (type === 'veryFast') { // for general fast delays (e.g. get rid of animation)
-    await sleep(random(500, 1000))
-  } else if (type === 'fast') { // for general fast delays (e.g. get rid of animation)
-    await sleep(random(1000, 1500))
-  } else if (type === 'network') { // for delays with a simple network request (e.g. like)
-    await sleep(random(2000, 3000))
-  } else if (type === 'long') { // for longer delays that may need extra processing (e.g. log in)
-    await sleep(random(5000, 7500))
-  } else {
-    throw new Error(`Invalid sleep delay '${type}'`)
-  }
-}
-
-let downloadFile = (src, path) => new Promise((resolve, reject) => {
-  let file = fsSync.createWriteStream(path)
-  let req = https.get(src, res => {
-    res.pipe(file)
-    file.on('finish', () => file.close(resolve))
-  }).on('error', err => {
-    reject(err)
-    fs.unlink(path).catch(() => {})
-  })
-})
 
 const Puppet = class {
   constructor() {
@@ -182,7 +175,7 @@ const Puppet = class {
   }
 
   // main actions
-  async login(username, password) {
+  async login(username = database.username, password = database.password) {
     if (!await this.tap('//button[contains(., "Log In")]', 'fast', { required: false })) return
     await this.type('//input[@name="username"]', username, 'veryFast')
     await this.type('//input[@name="password"]', password, 'veryFast')
@@ -265,13 +258,16 @@ const Puppet = class {
     await this.tap('//span/button[text()="Follow" or text()="Follow Back"]', 'network', { required: false })
   }
 
-  async createPost(path, caption) {
+  async createPost(src, caption) {
+    let localPath = `data/tmp-file${path.extname(src)}`
+    await downloadFile(src, localPath)
+
     let fileChooserPromise = this.page.waitForFileChooser()
 
     await this.tap('//*[@aria-label="New Post"]')
 
     let fileChooser = await fileChooserPromise
-    await fileChooser.accept([path])
+    await fileChooser.accept([localPath])
     await delay('network')
 
     await this.tap('//div/button[text()="Next"]', 'fast')
@@ -280,9 +276,11 @@ const Puppet = class {
       await this.page.type('//textarea[contains(@aria-label, "Write a caption")]', caption, 'veryFast')
 
     await this.tap('//div/button[text()="Share"]', 'long')
+
+    await fs.unlink(localPath)
   }
 
-  async cyclePost() {
+  /*async cyclePost() {
     await this.goToSelfProfile()
     await this.goToOldestPostFromProfile()
 
@@ -303,7 +301,7 @@ const Puppet = class {
       await this.cyclePost()
       await sleep(random(45 * 60e3, 60 * 60e3))
     }
-  }
+  }*/
 
   async unfollowAll() {
     await this.goToSelfProfile()
@@ -375,6 +373,7 @@ let ws = new WebSocket(`ws://${database.server}/`)
 
 ws.on('open', () => {
   console.log('Connected to server')
+  ws.send(JSON.stringify({ t: 'auth', token: config.token, mode: 'puppet' }))
 })
 
 ws.on('message', async data => {
