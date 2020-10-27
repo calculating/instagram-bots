@@ -421,9 +421,15 @@ wss.on('connection', async (ws, req) => {
   })
 })
 
+const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
+
 setInterval(async () => {
   let serverData = (await database.serverData.get()) || { accounts: {} }
   await database.serverData.set(serverData)
+
+  for (let account of Object.values(serverData.accounts)) {
+    account.posts.sort((a, b) => a.time - b.time)
+  }
 
   for (let puppet of puppets) {
     let account = serverData.accounts[puppet.token]
@@ -442,13 +448,27 @@ setInterval(async () => {
   }
 
   for (let account of Object.values(serverData.accounts)) {
-    if (account.redditGeneratePost.enabled && account.posts.length < account.redditGeneratePost.queueMax) {
-      let post = await redditGeneratePost(account.redditGeneratePost.subreddits, account.posts)
-      post.time = Date.now() + account.redditGeneratePost.waitTime
-      account.posts.push(post)
-      account.posts.sort((a, b) => a.time - b.time)
-      console.log('Generated post', post)
+    let postGen = account.postGen || { enabled: false }
+    if (!postGen.enabled) continue
+    if (account.posts.length >= postGen.queueMax) continue
+    if (postGen.dailyScheduledTimes.length === 0) continue
+
+
+    let post = await redditGeneratePost(postGen.subreddits, account.posts).catch(err => console.log(err))
+    if (!post) continue
+
+    let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
+    let lastPostTimeOfDay = getTimeOfDay(new Date(lastPostTime))
+    let bestTimeUntil = Infinity
+    for (let timeOfDay of postGen.dailyScheduledTimes) {
+      let timeUntil = ((timeOfDay - lastPostTimeOfDay + 86400000) % 86400000) || 86400000
+      if (timeUntil < bestTimeUntil)
+        bestTimeUntil = timeUntil
     }
+
+    post.time = lastPostTime + bestTimeUntil
+    account.posts.push(post)
+    console.log('Generated post', post)
   }
 
   await database.serverData.set(serverData)
