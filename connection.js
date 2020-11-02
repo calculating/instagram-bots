@@ -1,7 +1,5 @@
 const EventEmitter = require('events')
 
-const WebSocket = require('ws')
-
 const Connection = class extends EventEmitter {
   constructor(ws) {
     super()
@@ -51,9 +49,22 @@ const Connection = class extends EventEmitter {
       }
     })
 
-    ws.on('close', code => this.emit('close', code))
+    ws.on('close', code => {
+      this.quit(new Error(`Socket closed with code ${code}`))
+      this.emit('close', code)
+    })
 
-    ws.on('error', err => this.emit('error', err))
+    ws.on('error', err => {
+      this.quit(err)
+      this.emit('error', err)
+    })
+  }
+
+  quit(err) {
+    for (let [i, { reject }] of Object.entries(this.wsCallbacks)) {
+      reject(err)
+      delete this.wsCallbacks[i]
+    }
   }
 
   handle(type, listener) {
