@@ -36,22 +36,44 @@ let database = {
 
 const redditCategories = {
   global: {
-    exclude: /instagram|reddit/i,
+    excludeTitle: /instagram|reddit/i,
   },
   generic: {
     subreddits: ['all'],
   },
   memes: {
-    subreddits: ['surrealmemes'],
+    subreddits: ['DeepFriedMemes'], // ['surrealmemes'],
+  },
+  tech: {
+    subreddits: ['INEEEEDIT'],
+    excludeFlairs: ['Mod Approved Shitpost'],
+  },
+  mensFashion: {
+    subreddits: ['malefashion'],
+    requireFlairs: ['WIWT'],
+    caption: {
+      type: 'random',
+      options: ['Cop or not?', 'Good look?'],
+    },
   },
   travel: {
     subreddits: ['travel'],
-    exclude: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
+    excludeTitle: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
   },
 }
 
 const redditGeneratePost = async (category, duplicatesToAvoid) => {
-  let { subreddits, exclude } = redditCategories[category]
+  let categoryData = redditCategories[category]
+  if (!categoryData)
+    throw new Error('Invalid category')
+
+  let {
+    subreddits,
+    excludeTitle = null,
+    requireFlairs = null,
+    excludeFlairs = null,
+    caption = 'title',
+  } = categoryData
 
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
   let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
@@ -68,14 +90,28 @@ const redditGeneratePost = async (category, duplicatesToAvoid) => {
     if (!data.title || !data.url) continue
 
     if (!['.png', '.jpg', '.jpeg', '.gif', '.webm', '.mp4'].includes(path.extname(data.url))) continue
-    if (redditCategories.global.exclude.test(data.title)) continue
-    if (exclude && exclude.test(data.title)) continue
-
     if (duplicatesToAvoid.some(duplicate => duplicate.url === data.url)) continue
+
+    if (redditCategories.global.excludeTitle.test(data.title)) continue
+    if (excludeTitle && excludeTitle.test(data.title)) continue
+    if (excludeFlairs && excludeFlairs.includes(data.link_flair_text)) continue
+    if (requireFlairs && !requireFlairs.includes(data.link_flair_text)) continue
+
+    if (typeof caption === 'string')
+      caption = { type: caption }
+
+    let postCaption = data.title
+    if (caption.type === 'random') {
+      postCaption = caption.options[Math.floor(Math.random() * caption.options.length)]
+    } else if (caption.type === 'credited') {
+      postCaption = ''
+      if (data.author !== '[deleted]')
+        caption += ` (by ${data.author})`
+    }
 
     post = {
       url: data.url,
-      caption: data.title,
+      caption: postCaption,
     }
     break
   }
