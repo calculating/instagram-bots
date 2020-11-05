@@ -38,12 +38,14 @@ let database = {
 const Puppet = class {
   constructor(ws) {
     this.token = null
+    this.ready = false
     this.conn = new Connection(ws)
     this.conn.handle('auth', async token => {
       this.token = token
       await this.launch(false)
       await this.load()
       await this.login()
+      this.ready = true
     })
   }
 
@@ -349,6 +351,8 @@ let run = async () => {
   }
 
   for (let puppet of puppets) {
+    if (!puppet.ready) continue
+
     let account = serverData.accounts[puppet.token]
     if (!account) continue
 

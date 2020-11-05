@@ -228,14 +228,14 @@ const Puppet = class {
 let puppet = new Puppet()
 let conn = new Connection(new WebSocket(`ws://${database.server}/`))
 
-conn.on('open', async () => {
+conn.on('open', () => {
   console.log('Connected to server')
-  await conn.send('auth', config.token)
+  conn.send('auth', config.token).then(() => console.log('Logged in to server'))
 })
 
 conn.handle('cmd', async ({ cmd, args }) => {
   // console.log(cmd, args)
-  puppet[cmd](...args)
+  return await puppet[cmd](...args)
 })
 
 conn.handle('exit', async () => {
