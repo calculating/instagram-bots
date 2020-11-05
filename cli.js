@@ -86,6 +86,10 @@ rl.on('line', async line => {
         case 'rm':
           await conn.send('queue.remove', { id: args[0] })
           break
+        case 'clear':
+        case 'c':
+          await conn.send('queue.remove', { id: '*' })
+          break
         default:
           log('Invalid subcommand for queue')
           break
@@ -173,6 +177,7 @@ rl.on('line', async line => {
         'queue set    <id> caption <caption>     Set the caption of a post in the queue',
         'queue set    <id> time    <time>        Set the time of a post in the queue',
         'queue remove <id>                       Remove a post from the queue',
+        'queue remove *                          Remove all posts from the queue',
         '',
         'postGen                                 View the current post generation config',
         'postGen enable                          Enable automatic post generation',

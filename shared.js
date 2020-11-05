@@ -20,16 +20,26 @@ const delay = async type => {
   }
 }
 
-const request = async (...args) => new Promise((resolve, reject) => {
-  let req = https.request(...args, res => {
-    let chunks = []
-    res.on('data', data => chunks.push(data))
-    res.on('end', () => resolve(Buffer.concat(chunks)))
-    res.on('error', reject)
-  })
-  req.on('error', reject)
-  req.end()
+const consumeStream = stream => new Promise((resolve, reject) => {
+  let chunks = []
+  stream.on('data', data => chunks.push(data))
+  stream.on('end', () => resolve(Buffer.concat(chunks)))
+  stream.on('error', reject)
 })
+
+const requestWithPostData = async (...args) => {
+  let postData = args.pop()
+  let res = await new Promise((resolve, reject) => {
+    let req = https.request(...args, resolve)
+    req.on('error', reject)
+    if (postData)
+      req.write(postData)
+    req.end()
+  })
+  return consumeStream(res)
+}
+
+const request = (...args) => requestWithPostData(...args, null)
 
 const requestJson = async (...args) => JSON.parse(await request(...args))
 
@@ -44,4 +54,12 @@ const downloadFile = (src, path) => new Promise((resolve, reject) => {
   })
 })
 
-module.exports = { sleep, random, delay, downloadFile, request, requestJson }
+module.exports = {
+  sleep,
+  random,
+  delay,
+  requestWithPostData,
+  request,
+  requestJson,
+  downloadFile,
+}
