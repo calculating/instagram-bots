@@ -286,8 +286,10 @@ wss.on('connection', async (ws, req) => {
 const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
 
 let run = async () => {
-  let serverData = (await database.serverData.get()) || { accounts: {} }
+  let serverData = (await database.serverData.get()) || { accounts: {}, allPastPosts: [] }
   await database.serverData.set(serverData)
+
+  serverData.allPastPosts = serverData.allPastPosts.filter(post => post.madeAt + 7 * 24 * 60 * 60e3 > Date.now())
 
   for (let account of Object.values(serverData.accounts)) {
     account.posts.sort((a, b) => a.time - b.time)
@@ -310,10 +312,12 @@ let run = async () => {
     if (account.posts.length >= postGen.queueMax) continue
     if (postGen.dailyScheduledTimes.length === 0) continue
 
-    let post = await redditPostGen.generatePost(postGen.category, account.posts).catch(err => console.log(err))
+    let post = await redditPostGen.generatePost(postGen.category, serverData.allPastPosts).catch(err => console.log(err))
     if (!post) continue
 
-    let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
+    let madeAt = Date.now()
+
+    let { time: lastPostTime = madeAt } = account.posts[account.posts.length - 1] || {}
     let lastPostTimeOfDay = getTimeOfDay(new Date(lastPostTime))
     let bestTimeUntil = Infinity
     for (let timeOfDay of postGen.dailyScheduledTimes) {
@@ -324,6 +328,7 @@ let run = async () => {
 
     post.time = lastPostTime + bestTimeUntil
     account.posts.push(post)
+    serverData.allPastPosts.push({ url: post.url, madeAt })
     console.log('Generated post', post)
   }
 
