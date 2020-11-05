@@ -382,7 +382,7 @@ let run = async () => {
       }
     }
 
-    post.time = lastPostTimestamp + subtractTimeOfDay(time.start, lastPostTime) + Math.floor((time.end - time.start) * Math.random())
+    post.time = lastPostTimestamp + subtractTimeOfDay(bestTime.start, lastPostTime) + Math.floor((bestTime.end - bestTime.start) * Math.random())
 
     account.posts.push(post)
     serverData.allPastPosts.push({ url: post.url, madeAt })
