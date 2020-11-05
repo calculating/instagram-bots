@@ -111,8 +111,8 @@ rl.on('line', async line => {
           break
         case 'set':
         case 's':
-          if (args[0] !== 'queueMax' && args[0] !== 'category' && args[0] !== 'dailyScheduledTimes') {
-            log('Only the queueMax, category, and the dailyScheduledTimes can be set')
+          if (args[0] !== 'queueMax' && args[0] !== 'category') {
+            log('Only the queueMax and category can be set')
             break
           }
           let value =
@@ -124,7 +124,15 @@ rl.on('line', async line => {
         case 'reschedule':
           await conn.send('postGen.configSet', {
             key: 'dailyScheduledTimes',
-            value: args.map(t => getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + t)))),
+            value: args.map(time => {
+              let [start, end] = time.split('-')
+              let a = {
+                start: getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + start))),
+                end: getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + end))),
+              }
+              console.log(a)
+              return a
+            }),
           })
           break
         default:

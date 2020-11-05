@@ -292,7 +292,9 @@ wss.on('connection', async (ws, req) => {
         key === 'enabled' && typeof value === 'boolean' ||
         key === 'queueMax' && typeof value === 'number' ||
         key === 'category' && typeof value === 'string' ||
-        key === 'dailyScheduledTimes' && Array.isArray(value) && value.every(r => typeof r === 'number')
+        key === 'dailyScheduledTimes' && Array.isArray(value) && value.every(time => {
+          return typeof time === 'object' && typeof time.start === 'number' && typeof time.end === 'number'
+        })
       ) {
         account.postGen[key] = value
       } else {
@@ -334,6 +336,7 @@ wss.on('connection', async (ws, req) => {
 })
 
 const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
+const subtractTimeOfDay = (a, b) => ((a - b + 86400e3) % 86400e3) || 86400e3
 
 let run = async () => {
   let serverData = (await database.serverData.get()) || { accounts: {}, allPastPosts: [] }
@@ -367,16 +370,20 @@ let run = async () => {
 
     let madeAt = Date.now()
 
-    let { time: lastPostTime = madeAt } = account.posts[account.posts.length - 1] || {}
-    let lastPostTimeOfDay = getTimeOfDay(new Date(lastPostTime))
-    let bestTimeUntil = Infinity
-    for (let timeOfDay of postGen.dailyScheduledTimes) {
-      let timeUntil = ((timeOfDay - lastPostTimeOfDay + 86400000) % 86400000) || 86400000
-      if (timeUntil < bestTimeUntil)
-        bestTimeUntil = timeUntil
+    let { time: lastPostTimestamp = madeAt } = account.posts[account.posts.length - 1] || {}
+    let lastPostTime = getTimeOfDay(new Date(lastPostTimestamp))
+    let bestTimeUntilMin = Infinity
+    let bestTime = null
+    for (let time of postGen.dailyScheduledTimes) {
+      let timeUntilMin = subtractTimeOfDay(time.start, lastPostTime)
+      if (timeUntilMin < bestTimeUntilMin) {
+        bestTimeUntilMin = timeUntilMin
+        bestTime = time
+      }
     }
 
-    post.time = lastPostTime + bestTimeUntil
+    post.time = lastPostTimestamp + subtractTimeOfDay(time.start, lastPostTime) + Math.floor((time.end - time.start) * Math.random())
+
     account.posts.push(post)
     serverData.allPastPosts.push({ url: post.url, madeAt })
     console.log('Generated post', post)
