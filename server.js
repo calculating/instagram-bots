@@ -175,6 +175,56 @@ const Puppet = class {
       await sleep(random(45 * 60e3, 60 * 60e3))
     }
   }
+
+  /*async browseHomepage() {
+    // TODO: better way to determine if a post should be liked
+    let shouldLikePost = username => {
+      return /^[a-z]{6,16}$/.test(username)
+    }
+
+    let lastUsername = null
+    while (true) {
+      let posts = await this.page.$x('//article[@role="presentation"][div/section//button//*[@aria-label="Like"]]')
+      let post = null
+      let likeButton = null
+      let commentButton = null
+      for (let currentPost of posts) {
+        let [currentLikeButton] = await currentPost.$x('div/section//button//*[@aria-label="Like"]')
+        let [currentCommentButton] = await currentPost.$x('div/section//button//*[@aria-label="Comment"]')
+        let { y } = await currentLikeButton.boundingBox()
+        if (y > 600) break
+        post = currentPost
+        likeButton = currentLikeButton
+        commentButton = currentCommentButton
+      }
+
+      if (post) {
+        let [usernameLink] = await post.$x('header/div/div/div/a')
+        let username = await usernameLink.evaluate(node => node.innerHTML)
+        console.log(`Found post by ${username}`)
+
+        if (lastUsername !== username && shouldLikePost(username)) {
+          console.log('Post liked')
+          lastUsername = username
+          await likeButton.tap()
+          await delay('network')
+
+          if (Math.random() < 0.5) {
+            await commentButton.tap()
+            await delay('network')
+
+            await this.postComment('yes')
+
+            await this.backButton()
+            await delay('network')
+          }
+        }
+      }
+
+      await this.page.mouse.wheel({ deltaY: random(300, 500) })
+      await delay('network')
+    }
+  }*/
 }
 
 let wss = new WebSocket.Server({ port: 6000 })
