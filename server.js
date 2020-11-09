@@ -389,7 +389,7 @@ let run = async () => {
     post.time = lastPostTimestamp + subtractTimeOfDay(bestTime.start, lastPostTime) + Math.floor((bestTime.end - bestTime.start) * Math.random())
 
     account.posts.push(post)
-    serverData.allPastPosts.push({ url: post.url, madeAt })
+    serverData.allPastPosts.push({ id: post.id, madeAt })
     console.log('Generated post', post)
   }
 

@@ -1,7 +1,43 @@
 const path = require('path')
 
-const { requestJson } = require('./shared')
+const { request, requestJson } = require('./shared')
 const hashtagsGen = require('./hashtagsGen')
+
+const intoFileUrl = async (url, { image, video }) => {
+  let extname = path.extname(url)
+
+  if (image && ['.png', '.jpg', '.jpeg'].includes(extname)) {
+    return url
+  }
+
+  if (video) {
+    if (['.gif', '.webm', '.mp4'].includes(extname)) return url
+    if (extname === '.gifv') return url.replace(/\.gifv$/, '.mp4')
+    if (url.startsWith('https://v.redd.it/')) {
+      let urls = null
+      try {
+        let playlistFile = await request(url + '/DASHPlaylist.mpd')
+        urls = playlistFile.toString().match(/(?<=<BaseURL>)DASH_[0-9]+\.mp4(?=<\/BaseURL>)/g)
+        if (!urls)
+          throw new Error('URL not found in playlist')
+      } catch (e) {
+        return
+      }
+
+      let maxRes = 0
+      let bestUrl = null
+      for (let url of urls) {
+        let res = parseInt(url.replace('DASH_', ''), 10)
+        if (res <= maxRes) continue
+        maxRes = res
+        bestUrl = url
+      }
+      return url + '/' + bestUrl
+    }
+  }
+
+  return null
+}
 
 const categories = {
   global: {
@@ -17,6 +53,7 @@ const categories = {
   tech: {
     subreddits: ['INEEEEDIT'],
     excludeFlairs: ['Mod Approved Shitpost'],
+    filetypes: { video: true },
     hashtagsKeywords: ['tech'],
   },
   mensFashion: {
@@ -45,15 +82,19 @@ const generatePost = async (category, duplicatesToAvoid) => {
     excludeTitle = null,
     requireFlairs = null,
     excludeFlairs = null,
+    filetypes = { image: true, video: true },
     caption = 'title',
     hashtagsKeywords = [],
   } = categoryData
+
+  if (typeof caption === 'string')
+    caption = { type: caption }
 
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
   let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
   let time = 'week' // * = hour, day, week, month, year, all
 
-  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/${sorting}.json?raw_json=1&count=0&limit=25&t=${time}`, {
+  let res = await requestJson(`https://www.reddit.com/r/${subreddit}/${sorting}.json?raw_json=1&count=0&limit=75&t=${time}`, {
     headers: {
       'User-Agent': 'node.js:reddit-scraper:v0',
     },
@@ -63,16 +104,15 @@ const generatePost = async (category, duplicatesToAvoid) => {
   for (let { data } of res.data.children) {
     if (!data.title || !data.url) continue
 
-    if (!['.png', '.jpg', '.jpeg', '.gif', '.webm', '.mp4'].includes(path.extname(data.url))) continue
-    if (duplicatesToAvoid.some(duplicate => duplicate.url === data.url)) continue
+    if (duplicatesToAvoid.some(duplicate => duplicate.id === data.id)) continue
 
     if (categories.global.excludeTitle.test(data.title)) continue
     if (excludeTitle && excludeTitle.test(data.title)) continue
     if (excludeFlairs && excludeFlairs.includes(data.link_flair_text)) continue
     if (requireFlairs && !requireFlairs.includes(data.link_flair_text)) continue
 
-    if (typeof caption === 'string')
-      caption = { type: caption }
+    let fileUrl = await intoFileUrl(data.url, filetypes)
+    if (fileUrl == null) continue
 
     let postCaption = data.title.trim()
     if (caption.type === 'random') {
@@ -112,7 +152,8 @@ const generatePost = async (category, duplicatesToAvoid) => {
       postCaption += `\n\n${hashtags.slice(0, 30).join(' ')}`
 
     post = {
-      url: data.url,
+      id: data.id,
+      url: fileUrl,
       caption: postCaption,
     }
     break
