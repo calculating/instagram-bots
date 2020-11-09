@@ -11,20 +11,6 @@ const log = (...args) => {
   rl._refreshLine()
 }
 
-const parseLine = line => {
-  let args = []
-  for (let arg of (line.trim().match(/(?:[^\s"']+|"([^"\\]|\\[^])*"|'[^']*')+/g) || [])) {
-    if (arg.startsWith('"')) {
-      args.push(JSON.parse(arg))
-    } else if (arg.startsWith('\'')) {
-      args.push(arg.slice(1, -1))
-    } else {
-      args.push(arg)
-    }
-  }
-  return args
-}
-
 const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
 
 let conn = new Connection(new WebSocket(`ws://${config.server}/api/alpha`))
@@ -45,20 +31,21 @@ conn.on('error', err => {
   process.exit(0)
 })
 
-let rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  prompt: '> ',
-})
-
-rl.on('line', async line => {
-  let args
-  try {
-    args = parseLine(line)
-  } catch (err) {
-    log('Invalid quoted string in command')
+const parseLine = line => {
+  let args = []
+  for (let arg of (line.trim().match(/(?:[^\s"']+|"([^"\\]|\\[^])*"|'[^']*')+/g) || [])) {
+    if (arg.startsWith('"')) {
+      args.push(JSON.parse(arg))
+    } else if (arg.startsWith('\'')) {
+      args.push(arg.slice(1, -1))
+    } else {
+      args.push(arg)
+    }
   }
+  return args
+}
 
+const processLine = async args => {
   switch (args.shift()) {
     case 'queue':
     case 'q':
@@ -66,7 +53,7 @@ rl.on('line', async line => {
         case 'list':
         case 'ls':
           let list = await conn.send('queue.get')
-          log('Posts in the queue:\n' + list.map((post, i) => `[${i}] ${new Date(post.time).toLocaleString()} - ${post.url} - "${post.caption}"`).join('\n'))
+          log('Posts in the queue:\n\n' + list.map((post, i) => `[${i}] ${new Date(post.time).toLocaleString()} - ${post.url}\n${post.caption.replace(/^|(?<=\n)/g, ' | ')}\n +\n`).join('\n'))
           break
         case 'add':
         case 'a':
@@ -80,11 +67,11 @@ rl.on('line', async line => {
             break
           }
           let value = args[1] === 'time' ? new Date(args[2]).getTime() : args[2]
-          await conn.send('queue.set', { id: args[0], key: args[1], value })
+          await conn.send('queue.set', { id: +args[0], key: args[1], value })
           break
         case 'remove':
         case 'rm':
-          await conn.send('queue.remove', { id: args[0] })
+          await conn.send('queue.remove', { id: +args[0] })
           break
         case 'clear':
         case 'c':
@@ -121,17 +108,22 @@ rl.on('line', async line => {
                 args.slice(1).map(t => +t)
           await conn.send('postGen.configSet', { key: args[0], value })
           break
-        case 'reschedule':
+        case 'schedule':
+          console.log(`New schedule:`)
           await conn.send('postGen.configSet', {
             key: 'dailyScheduledTimes',
             value: args.map(time => {
               let [start, end] = time.split('-')
-              let a = {
-                start: getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + start))),
-                end: getTimeOfDay(new Date(new Date().toISOString().replace(/T.+/, 'T' + end))),
+
+              let today = new Date().toISOString().replace(/T.+/, 'T')
+              let startToday = new Date(today + start)
+              let endToday = new Date(today + end)
+
+              console.log(`- one post between ${startToday.toLocaleTimeString()} and ${endToday.toLocaleTimeString()}`)
+              return {
+                start: getTimeOfDay(startToday),
+                end: getTimeOfDay(endToday),
               }
-              console.log(a)
-              return a
             }),
           })
           break
@@ -193,7 +185,9 @@ rl.on('line', async line => {
         'postGen set queueMax <number>           Set the maximum number of posts that the',
         '                                        queue can have before generation stops',
         'postGen set category <category>         Set the category of posts to generate',
-        'postGen reschedule [time] [time] ...    Set the times of day for post generation',
+        'postGen schedule [times] [times] ...    Set the times of day for post generation',
+        '                Each time should be a range of times in 24-hour format, like in',
+        '                "pg schedule 10:00-10:30 14:30-15:00"',
         '',
         'postRecycle                             View the current post recycling config',
         'postRecycle enable                      Enable automatic post recycling',
@@ -202,13 +196,36 @@ rl.on('line', async line => {
         '                                        queue can have before recycling stops',
         'postRecycle set interval <hours>        Set the time between recycles in hours',
         '',
-        'Note: Arguments containing spaces or quotation marks should be put in quotes.',
+        'Note: Arguments containing spaces or quotation marks must be put in quotes.',
+        '      You can put "q" instead of "queue", "pg" instead of "postGen",',
+        '      or "pr" instead of "postRecycle".'
       ].join('\n'))
       break
 
     default:
       log('Invalid command')
       break
+  }
+}
+
+let rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  prompt: '> ',
+})
+
+rl.on('line', async line => {
+  let args
+  try {
+    args = parseLine(line)
+  } catch (err) {
+    log('Invalid quoted string in command')
+  }
+
+  try {
+    await processLine(args)
+  } catch (err) {
+    log(`Failed to execute command: ${err.message}`)
   }
   rl.prompt()
 })
