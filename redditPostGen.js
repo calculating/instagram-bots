@@ -149,7 +149,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     }
 
     if (hashtags.length > 0)
-      postCaption += `\n\n${hashtags.slice(0, 30).join(' ')}`
+      postCaption += `\n\n\n\n${hashtags.slice(0, 30).join(' ')}`
 
     post = {
       id: data.id,

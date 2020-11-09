@@ -52,8 +52,18 @@ const processLine = async args => {
       switch (args.shift()) {
         case 'list':
         case 'ls':
-          let list = await conn.send('queue.get')
-          log('Posts in the queue:\n\n' + list.map((post, i) => `[${i}] ${new Date(post.time).toLocaleString()} - ${post.url}\n${post.caption.replace(/^|(?<=\n)/g, ' | ')}\n +\n`).join('\n'))
+          {
+            let list = await conn.send('queue.get')
+            let lines = ['Posts in the queue:']
+            for (let i = 0; i < list.length; i++) {
+              let post = list[i]
+              let body = post.caption.replace(/\n+/g, '\n').replace(/^|(?<=\n)/g, '| ').replace(/\n\| (?=[^\n]*$)/, '\n+ ')
+              lines.push(`+-[${i}] ${new Date(post.time).toLocaleString()} - ${post.url}`)
+              lines.push(body)
+              lines.push('')
+            }
+            console.log(lines.join('\n'))
+          }
           break
         case 'add':
         case 'a':
