@@ -346,76 +346,88 @@ let run = async () => {
 
   serverData.allPastPosts = serverData.allPastPosts.filter(post => post.madeAt + 7 * 24 * 60 * 60e3 > Date.now())
 
-  for (let account of Object.values(serverData.accounts)) {
-    account.posts.sort((a, b) => a.time - b.time)
-  }
-
-  for (let puppet of puppets) {
-    if (!puppet.ready) continue
-
-    let account = serverData.accounts[puppet.token]
-    if (!account) continue
-
-    let post = account.posts[0]
-    if (post && post.time <= Date.now()) {
-      account.posts.shift()
-      await puppet.createPost(post.url, post.caption)
+  for (let account of Object.values(serverData.accounts))
+    try {
+      account.posts.sort((a, b) => a.time - b.time)
+    } catch (err) {
+      console.log(err)
     }
-  }
 
-  for (let account of Object.values(serverData.accounts)) {
-    let postGen = account.postGen || { enabled: false }
-    if (!postGen.enabled) continue
-    if (account.posts.length >= postGen.queueMax) continue
-    if (postGen.dailyScheduledTimes.length === 0) continue
+  for (let puppet of puppets)
+    try {
+      if (!puppet.ready) continue
 
-    let post = await redditPostGen.generatePost(postGen.category, serverData.allPastPosts).catch(err => console.log(err))
-    if (!post) continue
+      let account = serverData.accounts[puppet.token]
+      if (!account) continue
 
-    let madeAt = Date.now()
-
-    let { time: lastPostTimestamp = madeAt } = account.posts[account.posts.length - 1] || {}
-    let lastPostTime = getTimeOfDay(new Date(lastPostTimestamp))
-    let bestTimeUntilMin = Infinity
-    let bestTime = null
-    for (let time of postGen.dailyScheduledTimes) {
-      let timeUntilMin = subtractTimeOfDay(time.start, lastPostTime)
-      if (timeUntilMin < bestTimeUntilMin) {
-        bestTimeUntilMin = timeUntilMin
-        bestTime = time
+      let post = account.posts[0]
+      if (post && post.time <= Date.now()) {
+        account.posts.shift()
+        await puppet.createPost(post.url, post.caption)
       }
+    } catch (err) {
+      console.log(err)
     }
 
-    post.time = lastPostTimestamp + subtractTimeOfDay(bestTime.start, lastPostTime) + Math.floor((bestTime.end - bestTime.start) * Math.random())
+  for (let account of Object.values(serverData.accounts))
+    try {
+      let postGen = account.postGen || { enabled: false }
+      if (!postGen.enabled) continue
+      if (account.posts.length >= postGen.queueMax) continue
+      if (postGen.dailyScheduledTimes.length === 0) continue
 
-    account.posts.push(post)
-    serverData.allPastPosts.push({ id: post.id, madeAt })
-    console.log('Generated post', post)
-  }
+      let post = await redditPostGen.generatePost(postGen.category, serverData.allPastPosts).catch(err => console.log(err))
+      if (!post) continue
 
-  for (let [token, account] of Object.entries(serverData.accounts)) {
-    let postRecycle = account.postRecycle || { enabled: false }
-    if (!postRecycle.enabled) continue
-    if (account.posts.length >= postRecycle.queueMax) continue
+      let madeAt = Date.now()
 
-    let puppet = puppets.find(r => r.token === token)
-    if (!puppet) continue
+      let { time: lastPostTimestamp = madeAt } = account.posts[account.posts.length - 1] || {}
+      let lastPostTime = getTimeOfDay(new Date(lastPostTimestamp))
+      let bestTimeUntilMin = Infinity
+      let bestTime = null
+      for (let time of postGen.dailyScheduledTimes) {
+        let timeUntilMin = subtractTimeOfDay(time.start, lastPostTime)
+        if (timeUntilMin < bestTimeUntilMin) {
+          bestTimeUntilMin = timeUntilMin
+          bestTime = time
+        }
+      }
 
-    await puppet.goToSelfProfile()
-    await puppet.goToOldestPostFromProfile()
+      post.time = lastPostTimestamp + subtractTimeOfDay(bestTime.start, lastPostTime) + Math.floor((bestTime.end - bestTime.start) * Math.random())
 
-    let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
-    let post = {
-      url: await puppet.postGetMediaSrc(),
-      caption: await puppet.postGetCaption(),
-      time: lastPostTime + postRecycle.interval,
+      account.posts.push(post)
+      serverData.allPastPosts.push({ id: post.id, madeAt })
+      console.log('Generated post', post)
+    } catch (err) {
+      console.log(err)
     }
 
-    await puppet.postDelete()
+  for (let [token, account] of Object.entries(serverData.accounts))
+    try {
+      let postRecycle = account.postRecycle || { enabled: false }
+      if (!postRecycle.enabled) continue
+      if (account.posts.length >= postRecycle.queueMax) continue
 
-    account.posts.push(post)
-    console.log('Recycled post', post)
-  }
+      let puppet = puppets.find(r => r.token === token)
+      if (!puppet) continue
+
+      await puppet.goToSelfProfile()
+      await puppet.goToOldestPostFromProfile()
+
+      let { time: lastPostTime = Date.now() } = account.posts[account.posts.length - 1] || {}
+      let post = {
+        url: await puppet.postGetMediaSrc(),
+        caption: await puppet.postGetCaption(),
+        time: lastPostTime + postRecycle.interval,
+      }
+
+      await puppet.postDelete()
+
+      account.posts.push(post)
+      console.log('Recycled post', post)
+    } catch (err) {
+      console.log(err)
+    }
 
   await database.serverData.set(serverData)
 }
