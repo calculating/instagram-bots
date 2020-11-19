@@ -65,6 +65,12 @@ const categories = {
     },
     hashtagsKeywords: ['mensfashion'],
   },
+  mongusCity: {
+    subreddits: ['AmongUs', 'AmongUsMemes'],
+    requireFlairs: ['Humor', 'Meme', 'OC Meme'],
+    middleText: '*\n*\nFollow @mongus.city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
+    hashtagsList: '#amongus #amongusmeme #amongusgame #amongusart #amongusmemes #amongusespañol #amongusfanart #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus #amonguscosplay #amongusgreen #amonguspink #amongusorange #amongusyellow #amongus #amongusfunny #amonguswhite #amongusmemes #amongusmeme #amonguscomic #amongusfunny #amongusgameplay #amongusvideos #innersloth #redsus #impostor #meme #memes #funny #dankmemes #humor #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus'.split(' '),
+  },
   travel: {
     subreddits: ['travel'],
     excludeTitle: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
@@ -82,8 +88,10 @@ const generatePost = async (category, duplicatesToAvoid) => {
     excludeTitle = null,
     requireFlairs = null,
     excludeFlairs = null,
-    filetypes = { image: true, video: true },
+    filetypes = { image: true, video: false },
+    middleText = '\n\n',
     caption = 'title',
+    hashtagsList = [],
     hashtagsKeywords = [],
   } = categoryData
 
@@ -124,7 +132,25 @@ const generatePost = async (category, duplicatesToAvoid) => {
     }
 
     let hashtags = []
-    let maxPerKeyword = Math.ceil(30 / hashtagsKeywords.length)
+    let hashtagsAddFrom = (from, max, maxTotal = 30, shuffleMode = 'excludeFirst') => {
+      from = from.slice()
+      let added = 0
+      while (added < max && hashtags.length < maxTotal) {
+        if (from.length === 0) break
+        let shuffled = shuffleMode === 'excludeFirst' ? added !== 0 : shuffleMode
+        let hashtag = shuffled ? from.splice(Math.floor(Math.random() * from.length), 1)[0] : from.shift()
+        if (hashtags.includes(hashtag)) continue
+        hashtags.push(hashtag)
+        added++
+      }
+      return added
+    }
+
+    if (hashtagsList.length > 0) {
+      hashtagsAddFrom(hashtagsList, hashtagsKeywords.length === 0 ? 30 : 20, 30)
+    }
+
+    let maxPerKeyword = Math.ceil((30 - hashtags.length) / hashtagsKeywords.length)
     for (let keyword of hashtagsKeywords) {
       let ignoreError = err => {
         console.error(err)
@@ -137,24 +163,15 @@ const generatePost = async (category, duplicatesToAvoid) => {
         // hashtagsGen.topHashtags(keyword).catch(ignoreError),
       ]))
 
-      let max = hashtags.length + maxPerKeyword
-
-      hashtags.push(`#${keyword}`)
-      while (hashtags.length < max) {
-        if (results.length === 0) break
-        let [result] = results.splice(Math.floor(Math.random() * results.length), 1)
-        if (!hashtags.includes(result))
-          hashtags.push(result)
-      }
+      hashtagsAddFrom([`#${keyword}`, ...results], maxPerKeyword, 30)
     }
 
-    if (hashtags.length > 0)
-      postCaption += `\n\n\n\n${hashtags.slice(0, 30).join(' ')}`
+    postCaption += `\n${middleText}\n${hashtags.join(' ')}`
 
     post = {
       id: data.id,
       url: fileUrl,
-      caption: postCaption,
+      caption: postCaption.trim(),
     }
     break
   }
