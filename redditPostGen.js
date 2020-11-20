@@ -41,7 +41,7 @@ const intoFileUrl = async (url, { image, video }) => {
 
 const categories = {
   global: {
-    excludeTitle: /instagram|reddit/i,
+    excludeTitle: /instagram|reddit|title/i,
   },
   generic: {
     subreddits: ['all'],
@@ -67,6 +67,7 @@ const categories = {
   },
   mongusCity: {
     subreddits: ['AmongUs', 'AmongUsMemes'],
+    excludeTitle: /\b(i|[wm]e|us)\b/i,
     requireFlairs: ['Humor', 'Meme', 'OC Meme'],
     middleText: '*\n*\nFollow @mongus.city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
     hashtagsList: '#amongus #amongusmeme #amongusgame #amongusart #amongusmemes #amongusespañol #amongusfanart #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus #amonguscosplay #amongusgreen #amonguspink #amongusorange #amongusyellow #amongus #amongusfunny #amonguswhite #amongusmemes #amongusmeme #amonguscomic #amongusfunny #amongusgameplay #amongusvideos #innersloth #redsus #impostor #meme #memes #funny #dankmemes #humor #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus'.split(' '),
