@@ -10,27 +10,32 @@ const { sleep, random, delay } = require('./shared')
 
 const redditPostGen = require('./redditPostGen')
 
+const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
+const subtractTimeOfDay = (a, b) => ((a - b + 86400e3) % 86400e3) || 86400e3
+
+
+// { accounts: {}, allPastPosts: [] }
 let database = {
-  serverData: { // TODO: this is done badly
+  serverData: {
     cache: null,
+    canSave: false,
     async get() {
       if (this.cache) return this.cache
-      try {
-        this.cache = JSON.parse(await fs.readFile(__dirname + '/data/serverData.json'))
-        return this.cache
-      } catch (err) {
-        return null
-      }
+      this.cache = fs.readFile(__dirname + '/data/serverData.json').then(data => JSON.parse(data)).catch(() => null)
+      this.canSave = true
+      return this.cache
     },
-    async set(data) {
-      this.cache = data
+    async save() {
+      if (!this.canSave) return
+      this.canSave = false
       try {
         await fs.mkdir(__dirname + '/data')
       } catch (err) {
         if (err.code !== 'EEXIST')
           throw err
       }
-      await fs.writeFile(__dirname + '/data/serverData.json', JSON.stringify(data))
+      await fs.writeFile(__dirname + '/data/serverData.json', JSON.stringify(await this.get()))
+      this.canSave = true
     },
   },
 }
@@ -229,101 +234,307 @@ const Puppet = class {
   }*/
 }
 
+const createApiConnection = ws => {
+  let conn = new Connection(ws)
+
+  let token = null // TODO: this is kinda bad?
+  let account = null
+  let timezone = 0
+
+  const parseLine = line => {
+    let args = []
+    for (let arg of (line.trim().match(/(?:[^\s"']+|"([^"\\]|\\[^])*"|'[^']*')+/g) || [])) {
+      if (arg.startsWith('"')) {
+        args.push(JSON.parse(arg))
+      } else if (arg.startsWith('\'')) {
+        args.push(arg.slice(1, -1))
+      } else {
+        args.push(arg)
+      }
+    }
+    return args
+  }
+
+  const processLine = async args => {
+    if (!account) throw new Error('Not logged in')
+
+    switch (args.shift()) {
+      case 'queue':
+      case 'q':
+        switch (args.shift()) {
+          case 'list':
+          case 'ls':
+            {
+              account.posts.sort((a, b) => a.time - b.time)
+              let lines = ['Posts in the queue:']
+              for (let i = 0; i < account.posts.length; i++) {
+                let post = account.posts[i]
+                let timeString = new Date(post.time).toLocaleString()
+                if (i === 0) {
+                  let countdown = post.time - Date.now()
+                  let countdownMinutes = Math.floor(countdown / 60e3)
+                  let countdownHours = Math.floor(countdownMinutes / 60)
+                  countdownMinutes %= 60
+                  timeString = `${timeString} (${countdown < 0 ? 'now' : `in ${countdownHours}h ${countdownMinutes}m`})`
+                }
+                let body = post.caption.replace(/\n+/g, '\n').replace(/^|(?<=\n)/g, '| ').replace(/\n\| (?=[^\n]*$)/, '\n+ ')
+                lines.push(`+-[${i}] ${timeString} - ${post.url}`)
+                lines.push(body)
+                lines.push('')
+              }
+              await conn.send('line', lines.join('\n'))
+            }
+            break
+
+          case 'add':
+          case 'a':
+            await conn.send('line', '`queue add` is disabled for security reasons')
+            /*conn.handle('queue.add', post => {
+              if (!account) throw new Error('Not logged in')
+              if (typeof post.url !== 'string' || typeof post.caption !== 'string' || typeof post.time !== 'number')
+                throw new Error('Invalid post data')
+              account.posts.push({ url: post.url, caption: post.caption, time: post.time })
+            })*/
+            // await conn.send('queue.add', { url: args[0], caption: args[1], time: args[2] })
+            break
+
+          case 'set':
+          case 's':
+            {
+              let id = +args[0]
+              let post = account.posts[id]
+              if (!post) throw new Error('Post not found')
+
+              let key = args[1]
+              if (key !== 'caption' && key !== 'time') {
+                await conn.send('line', 'Only the caption and the time can be set')
+                break
+              }
+
+              let value = key === 'time' ? new Date(args[2]).getTime() : args[2]
+              if (typeof value !== ({ caption: 'string', time: 'number' })[key])
+                throw new Error('Invalid key or value')
+              post[key] = value
+            }
+            break
+
+          case 'remove':
+          case 'rm':
+            {
+              let id = +args[0]
+              if (Number.isInteger(id) && id >= 0 && id < account.posts.length)
+                account.posts.splice(id, 1)
+              else
+                throw new Error('Post not found')
+            }
+            break
+
+          case 'clear':
+          case 'c':
+            account.posts = []
+            break
+
+          default:
+            await conn.send('line', 'Invalid subcommand for queue')
+            break
+        }
+        break
+
+      case 'postGen':
+      case 'pg':
+        switch (args.shift() || null) {
+          case null:
+            await conn.send('line', `Config:\n${JSON.stringify(account.postGen)}`)
+            break
+
+          case 'enable':
+            account.postGen.enabled = true
+            break
+
+          case 'disable':
+            account.postGen.enabled = false
+            break
+
+          case 'set':
+          case 's':
+            {
+              let key = args[0]
+              if (key !== 'queueMax' && key !== 'category') {
+                await conn.send('line', 'Only the queueMax and category can be set')
+                break
+              }
+
+              let value =
+                key === 'queueMax' ? +args[1] :
+                  key === 'category' ? args[1] :
+                    args.slice(1).map(t => +t)
+
+              if (
+                key === 'queueMax' && typeof value === 'number' ||
+                key === 'category' && typeof value === 'string'
+              ) {
+                account.postGen[key] = value
+              } else {
+                throw new Error('Invalid key or value')
+              }
+            }
+            break
+
+          case 'schedule':
+            await conn.send('line', 'New schedule:')
+            {
+              let dailyScheduledTimes = []
+              for (let time of args) {
+                let [start, end] = time.split('-')
+
+                let today = new Date().toISOString().replace(/T.+/, 'T')
+                let startToday = new Date(today + start)
+                let endToday = new Date(today + end)
+
+                await conn.send('line', `- one post between ${startToday.toLocaleTimeString()} and ${endToday.toLocaleTimeString()}`)
+                dailyScheduledTimes.push({
+                  start: getTimeOfDay(startToday),
+                  end: getTimeOfDay(endToday),
+                })
+              }
+              account.postGen.dailyScheduledTimes = dailyScheduledTimes
+            }
+            break
+
+          default:
+            await conn.send('line', 'Invalid subcommand for postGen')
+            break
+        }
+        break
+
+      case 'postRecycle':
+      case 'pr':
+        switch (args.shift() || null) {
+          case null:
+            await conn.send('line', `Config:\n${JSON.stringify(account.postRecycle)}`)
+            break
+
+          case 'enable':
+            account.postRecycle.enabled = true
+            break
+
+          case 'disable':
+            account.postRecycle.enabled = false
+            break
+
+          case 'set':
+          case 's':
+            {
+              let key = args[0]
+              if (key !== 'queueMax' && key !== 'interval') {
+                await conn.send('line', 'Only the queueMax and interval can be set')
+                break
+              }
+
+              let value = key === 'queueMax' ? +args[1] : +args[1] * 60 * 60e3
+              if (
+                key === 'enabled' && typeof value === 'boolean' ||
+                key === 'queueMax' && typeof value === 'number' ||
+                key === 'interval' && typeof value === 'number'
+              ) {
+                account.postRecycle[key] = value
+              } else {
+                throw new Error('Invalid key or value')
+              }
+            }
+            break
+
+          default:
+            await conn.send('line', 'Invalid subcommand for postRecycle')
+            break
+        }
+        break
+
+      case 'skipWait':
+      case 'now':
+        skipWait() // TODO: debug command?
+        break
+
+      case 'help':
+        // [......][......][......][......][......][......][......][......][......][......]
+        await conn.send('line', [
+          'queue list                              List the queue',
+          // 'queue add    <url> <caption> <time>',
+          // 'queue set    <id> url     <url>',
+          'queue set    <id> caption <caption>     Set the caption of a post in the queue',
+          'queue set    <id> time    <time>        Set the time of a post in the queue',
+          'queue remove <id>                       Remove a post from the queue',
+          'queue clear                             Remove all posts from the queue',
+          '',
+          'postGen                                 View the current post generation config',
+          'postGen enable                          Enable automatic post generation',
+          'postGen disable                         Disable automatic post generation',
+          'postGen set queueMax <number>           Set the maximum number of posts that the',
+          '                                        queue can have before generation stops',
+          'postGen set category <category>         Set the category of posts to generate',
+          'postGen schedule [times] [times] ...    Set the times of day for post generation',
+          '                Each time should be a range of times in 24-hour format, like in',
+          '                "pg schedule 10:00-10:30 14:30-15:00"',
+          '',
+          'postRecycle                             View the current post recycling config',
+          'postRecycle enable                      Enable automatic post recycling',
+          'postRecycle disable                     Disable automatic post recycling',
+          'postRecycle set queueMax <number>       Set the maximum number of posts that the',
+          '                                        queue can have before recycling stops',
+          'postRecycle set interval <hours>        Set the time between recycles in hours',
+          '',
+          'Note: Arguments containing spaces or quotation marks must be put in quotes.',
+          '      You can put "q" instead of "queue", "pg" instead of "postGen",',
+          '      or "pr" instead of "postRecycle".'
+        ].join('\n'))
+        break
+
+      default:
+        await conn.send('line', 'Invalid command')
+        break
+    }
+
+    await database.serverData.save()
+  }
+
+  conn.handle('timezone', to => timezone = to)
+
+  conn.handle('auth', async newToken => {
+    if (typeof newToken !== 'string')
+      throw new Error('Token must be a string')
+    if (token != null)
+      throw new Error('Already logged in')
+    let serverData = await database.serverData.get()
+    if (!serverData.accounts.hasOwnProperty(newToken)) throw new Error('Account not found')
+    token = newToken
+    account = serverData.accounts[token]
+    conn.send('line', 'Logged in successfully')
+  })
+
+  conn.handle('line', async line => {
+    let args
+    try {
+      args = parseLine(line)
+    } catch (err) {
+      conn.send('line', 'Invalid quoted string in command')
+      return
+    }
+
+    try {
+      await processLine(args)
+    } catch (err) {
+      conn.send('line', `Failed to execute command: ${err.message}`)
+    }
+  })
+}
+
 let wss = new WebSocket.Server({ port: 6000 })
 
 let puppets = []
 wss.on('connection', async (ws, req) => {
   console.log('New connection')
   if (url.parse(req.url).pathname.replace(/\/+$/, '') === '/api/alpha') {
-    let serverData = (await database.serverData.get()) || { accounts: {} }
-    await database.serverData.set(serverData)
-
-    let token = null // TODO: this is kinda bad?
-    let account = null
-
-    let conn = new Connection(ws)
-
-    conn.handle('auth', newToken => {
-      if (typeof newToken !== 'string')
-        throw new Error('Token must be a string')
-      token = newToken
-      account = serverData.accounts[token]
-      if (!account) throw new Error('Account not found')
-    })
-
-    conn.handle('queue.get', () => {
-      if (!account) throw new Error('Not logged in')
-      account.posts.sort((a, b) => a.time - b.time)
-      return account.posts
-    })
-
-    /*conn.handle('queue.add', post => {
-      if (!account) throw new Error('Not logged in')
-      if (typeof post.url !== 'string' || typeof post.caption !== 'string' || typeof post.time !== 'number')
-        throw new Error('Invalid post data')
-      account.posts.push({ url: post.url, caption: post.caption, time: post.time })
-    })*/
-
-    conn.handle('queue.set', ({ id, key, value }) => {
-      if (!account) throw new Error('Not logged in')
-      let post = account.posts[id]
-      if (!post) throw new Error('Post not found')
-      if (typeof value !== ({ /*url: 'string',*/ caption: 'string', time: 'number' })[key])
-        throw new Error('Invalid key or value')
-      post[key] = value
-    })
-
-    conn.handle('queue.remove', ({ id }) => {
-      if (!account) throw new Error('Not logged in')
-      if (id === '*')
-        account.posts = []
-      else if (Number.isInteger(id) && id >= 0 && id < account.posts.length)
-        account.posts.splice(id, 1)
-      else
-        throw new Error('Post not found')
-    })
-
-    conn.handle('postGen.configGet', () => {
-      if (!account) throw new Error('Not logged in')
-      return account.postGen
-    })
-
-    conn.handle('postGen.configSet', ({ key, value }) => {
-      if (!account) throw new Error('Not logged in')
-      if (
-        key === 'enabled' && typeof value === 'boolean' ||
-        key === 'queueMax' && typeof value === 'number' ||
-        key === 'category' && typeof value === 'string' ||
-        key === 'dailyScheduledTimes' && Array.isArray(value) && value.every(time => {
-          return typeof time === 'object' && typeof time.start === 'number' && typeof time.end === 'number'
-        })
-      ) {
-        account.postGen[key] = value
-      } else {
-        throw new Error('Invalid key or value')
-      }
-    })
-
-    conn.handle('postRecycle.configGet', () => {
-      if (!account) throw new Error('Not logged in')
-      return account.postRecycle
-    })
-
-    conn.handle('postRecycle.configSet', ({ key, value }) => {
-      if (!account) throw new Error('Not logged in')
-      if (
-        key === 'enabled' && typeof value === 'boolean' ||
-        key === 'queueMax' && typeof value === 'number' ||
-        key === 'interval' && typeof value === 'number'
-      ) {
-        account.postRecycle[key] = value
-      } else {
-        throw new Error('Invalid key or value')
-      }
-    })
-
-    conn.handle('sudo.skipWait', () => skipWait()) // TODO: debug command?
-
+    createApiConnection(ws)
     return
   }
 
@@ -337,12 +548,8 @@ wss.on('connection', async (ws, req) => {
   })
 })
 
-const getTimeOfDay = date => ((date.getUTCHours() * 60 + date.getUTCMinutes()) * 60 + date.getUTCSeconds()) * 1000 + date.getUTCMilliseconds()
-const subtractTimeOfDay = (a, b) => ((a - b + 86400e3) % 86400e3) || 86400e3
-
 let run = async () => {
-  let serverData = (await database.serverData.get()) || { accounts: {}, allPastPosts: [] }
-  await database.serverData.set(serverData)
+  let serverData = await database.serverData.get()
 
   serverData.allPastPosts = serverData.allPastPosts.filter(post => post.madeAt + 7 * 24 * 60 * 60e3 > Date.now())
 
@@ -429,7 +636,7 @@ let run = async () => {
       console.log(err)
     }
 
-  await database.serverData.set(serverData)
+  await database.serverData.save()
 }
 
 let skipWait = () => {}
