@@ -46,8 +46,11 @@ const Puppet = class {
     this.ready = false
     this.conn = new Connection(ws)
     this.conn.handle('auth', async token => {
+      let serverData = await database.serverData.get()
+      if (!serverData.accounts.hasOwnProperty(token)) throw new Error('Account not found')
       this.token = token
-      await this.launch(false)
+      let account = serverData.accounts[token]
+      await this.launch(account.config.headless)
       await this.load()
       await this.login()
       this.ready = true
@@ -449,6 +452,17 @@ const createApiConnection = ws => {
             break
         }
         break
+
+      case 'headless':
+        account.config = account.config || {}
+        switch (args.shift()) {
+          case 'enable':
+            account.config.headless = true
+            break
+          case 'disable':
+            account.config.headless = false
+            break
+        }
 
       case 'skipWait':
       case 'now':
