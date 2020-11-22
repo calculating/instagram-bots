@@ -16,9 +16,9 @@ puppeteer.use(require('puppeteer-extra-plugin-stealth/evasions/user-agent-overri
   platform: 'Linux aarch64',
 }))
 
-const PUPPETEER_ALLOW_REPL_CMD = false
+const PUPPETEER_DEBUG = false
 
-if (PUPPETEER_ALLOW_REPL_CMD)
+if (PUPPETEER_DEBUG)
   puppeteer.use(require('puppeteer-extra-plugin-repl')())
 
 const Connection = require('./connection')
@@ -197,21 +197,21 @@ const Puppet = class {
   }
 
   async createPost(src, caption) {
-    let localPath = `data/tmp-file${path.extname(src)}`
+    let localPath = path.join(__dirname, 'data', `tmp-file${path.extname(src)}`)
     await downloadFile(src, localPath)
 
     let fileChooserPromise = this.page.waitForFileChooser()
 
-    await this.tap('//*[@aria-label="New Post"]')
+    await this.tap('//*[@aria-label="New Post"]', 'network')
 
     let fileChooser = await fileChooserPromise
     await fileChooser.accept([localPath])
-    await delay('network')
+    await delay('fast')
 
-    await this.tap('//div/button[text()="Next"]', 'fast')
+    await this.tap('//div/button[text()="Next"]', 'network')
 
     if (caption)
-      await this.page.type('//textarea[contains(@aria-label, "Write a caption")]', caption, 'veryFast')
+      await this.type('//textarea[contains(@aria-label, "Write a caption")]', caption, 'veryFast')
 
     await this.tap('//div/button[text()="Share"]', 'long')
 
@@ -220,40 +220,55 @@ const Puppet = class {
 
   // debug function
   async debugRepl() {
-    if (PUPPETEER_ALLOW_REPL_CMD)
+    if (PUPPETEER_DEBUG)
       await this.page.repl()
   }
 }
 
 let puppet = new Puppet()
-let conn = new Connection(new WebSocket(`ws://${database.server}/`))
-
-conn.on('open', () => {
-  console.log('Connected to server')
-  conn.send('auth', config.token).then(() => console.log('Logged in to server'))
-})
-
-conn.handle('cmd', async ({ cmd, args }) => {
-  // console.log(cmd, args)
-  return await puppet[cmd](...args)
-})
-
-conn.handle('exit', async () => {
-  setTimeout(() => process.exit(0), 200)
-})
-
-conn.on('close', () => {
-  console.log('Disconnected from server')
-
-  puppet.close().then(() => process.exit(0)).catch(err => {
-    console.log(err)
-    process.exit(1)
-  })
-})
-
-conn.on('error', console.error)
-
+let conn = null
 let exiting = false
+
+let startConnection = () => {
+  if (exiting) return
+
+  conn = new Connection(new WebSocket(`ws://${database.server}/`))
+
+  conn.on('open', () => {
+    console.log('Connected to server')
+    conn.send('auth', config.token).then(() => console.log('Logged in to server'))
+  })
+
+  conn.handle('cmd', async ({ cmd, args }) => {
+    if (cmd.startsWith('_'))
+      throw new Error('Invalid command')
+    if (PUPPETEER_DEBUG)
+      console.log(cmd, args)
+    return await puppet[cmd](...args)
+  })
+
+  conn.handle('exit', async () => {
+    setTimeout(() => process.exit(0), 200)
+  })
+
+  conn.on('close', async () => {
+    console.log('Disconnected from server')
+
+    try {
+      await puppet.close()
+    } catch (err) {
+      console.log(err)
+      process.exit(1)
+    }
+
+    setTimeout(() => startConnection(), 60e3)
+  })
+
+  conn.on('error', console.error)
+}
+
+startConnection()
+
 for (let signal of ['SIGINT', 'SIGHUP', 'SIGTERM'])
   process.on(signal, () => {
     if (exiting) return

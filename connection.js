@@ -8,8 +8,15 @@ const Connection = class extends EventEmitter {
     this.wsCallbacks = {}
     this.i = 0
     this.eventHandlers = {}
+    this.pongInterval = setInterval(() => ws.pong(), 3e3)
+    this.dcTimeout = setTimeout(() => ws.terminate(), 3e3 + 1.5e3)
 
     ws.on('open', () => this.emit('open'))
+
+    ws.on('pong', () => {
+      clearInterval(this.dcTimeout)
+      this.dcTimeout = setTimeout(() => ws.terminate(), 3e3 + 1.5e3)
+    })
 
     ws.on('message', async message => {
       if (typeof message !== 'string') {
@@ -50,6 +57,8 @@ const Connection = class extends EventEmitter {
     })
 
     ws.on('close', code => {
+      clearInterval(this.pongInterval)
+      clearInterval(this.dcTimeout)
       this.quit(new Error(`Socket closed with code ${code}`))
       this.emit('close', code)
     })
