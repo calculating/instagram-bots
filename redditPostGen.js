@@ -41,7 +41,7 @@ const intoFileUrl = async (url, { image, video }) => {
 
 const categories = {
   global: {
-    excludeTitle: /instagram|reddit|title/i,
+    excludeTitle: /instagram|reddit|post|title/i,
   },
   generic: {
     subreddits: ['all'],
@@ -69,7 +69,8 @@ const categories = {
     subreddits: ['AmongUs', 'AmongUsMemes'],
     excludeTitle: /\b(i|[wm]e|us)\b/i,
     requireFlairs: ['Humor', 'Meme', 'OC Meme'],
-    middleText: '*\n*\nFollow @mongus.city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
+    caption: 'credited',
+    middleText: '*\n*\nFollow @mongus_city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
     hashtagsList: '#amongus #amongusmeme #amongusgame #amongusart #amongusmemes #amongusespañol #amongusfanart #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus #amonguscosplay #amongusgreen #amonguspink #amongusorange #amongusyellow #amongus #amongusfunny #amonguswhite #amongusmemes #amongusmeme #amonguscomic #amongusfunny #amongusgameplay #amongusvideos #innersloth #redsus #impostor #meme #memes #funny #dankmemes #humor #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus'.split(' '),
   },
   travel: {
@@ -119,6 +120,8 @@ const generatePost = async (category, duplicatesToAvoid) => {
     if (excludeTitle && excludeTitle.test(data.title)) continue
     if (excludeFlairs && excludeFlairs.includes(data.link_flair_text)) continue
     if (requireFlairs && !requireFlairs.includes(data.link_flair_text)) continue
+    let sourceSize = data.preview?.images?.[0].source || { width: 1, height: 1 }
+    if (sourceSize.height / sourceSize.width > 1.2 || sourceSize.height / sourceSize.width < 0.4) continue
 
     let fileUrl = await intoFileUrl(data.url, filetypes)
     if (fileUrl == null) continue
@@ -126,10 +129,8 @@ const generatePost = async (category, duplicatesToAvoid) => {
     let postCaption = data.title.trim()
     if (caption.type === 'random') {
       postCaption = caption.options[Math.floor(Math.random() * caption.options.length)]
-    } else if (caption.type === 'credited') {
-      postCaption = ''
-      if (data.author !== '[deleted]')
-        caption += ` (by ${data.author})`
+    } else if (caption.type === 'credited' && data.author !== '[deleted]') {
+      postCaption += ` (from ${data.author})`
     }
 
     let hashtags = []
