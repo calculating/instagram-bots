@@ -126,11 +126,11 @@ const generatePost = async (category, duplicatesToAvoid) => {
     let fileUrl = await intoFileUrl(data.url, filetypes)
     if (fileUrl == null) continue
 
-    let postCaption = data.title.trim()
+    let postCaption = []
     if (caption.type === 'random') {
-      postCaption = caption.options[Math.floor(Math.random() * caption.options.length)]
-    } else if (caption.type === 'credited' && data.author !== '[deleted]') {
-      postCaption += ` (from ${data.author})`
+      postCaption.push(caption.options[Math.floor(Math.random() * caption.options.length)])
+    } else {
+      postCaption.push(data.title.trim())
     }
 
     let hashtags = []
@@ -168,12 +168,17 @@ const generatePost = async (category, duplicatesToAvoid) => {
       hashtagsAddFrom([`#${keyword}`, ...results], maxPerKeyword, 30)
     }
 
-    postCaption += `\n${middleText}\n${hashtags.join(' ')}`
+    if (middleText)
+      postCaption.push(middleText)
+    if (caption.type === 'credited' && data.author !== '[deleted]')
+      postCaption.push(`Credit: ${data.author}`)
+    if (hashtags.length > 0)
+      postCaption.push(hashtags.join(' '))
 
     post = {
       id: data.id,
       url: fileUrl,
-      caption: postCaption.trim(),
+      caption: postCaption.join('\n'),
     }
     break
   }
