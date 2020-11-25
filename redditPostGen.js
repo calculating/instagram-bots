@@ -73,10 +73,89 @@ const categories = {
     middleText: '*\n*\nFollow @mongus_city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
     hashtagsList: '#amongus #amongusmeme #amongusgame #amongusart #amongusmemes #amongusespañol #amongusfanart #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus #amonguscosplay #amongusgreen #amonguspink #amongusorange #amongusyellow #amongus #amongusfunny #amonguswhite #amongusmemes #amongusmeme #amonguscomic #amongusfunny #amongusgameplay #amongusvideos #innersloth #redsus #impostor #meme #memes #funny #dankmemes #humor #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus'.split(' '),
   },
-  travel: {
-    subreddits: ['travel'],
+  justWildernessPlaces: {
+    subreddits: ['EarthPorn'],
+    removeTitle: /\[[^\]]*\][^]*$/,
     excludeTitle: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
-    hashtagsKeywords: ['travel'],
+    caption: 'credited',
+    middleText: '\nWould you go here?\nFollow us @just_wilderness_places\n',
+    hashtagsKeywords: ['nature', 'travel'],
+  },
+  dogs: {
+    subreddits: ['dogpictures'],
+    sorting: 'top',
+    caption: {
+      type: 'random',
+      options: [
+        'Cutest face! 😍',
+        '🐶🐶',
+        'Daydreamin’ about treaties. 🍬',
+        '😀😀',
+        'I want them!! 😍',
+        'So tiny 🥰',
+        'Hey! That\'s me! 😍',
+        'Look at this baby!! 😍😍',
+        'That angelic look 😍😇',
+        'Look at this cute baby 😍😍',
+        'Who else loves this time of the year? ',
+        'Will never get over these eyes! 😍😍',
+        'Such a cute baby 😍😍',
+        'Cozy time ☺️',
+        'Look at that fluffy face 😍😍',
+        'Such a cute little baby 😍😍',
+        'How\'s the weekend going furrfriends 🥰',
+        'A growing cutie 😍😍',
+        'Tired after a long walk 😪',
+        'Super adorable!! 😍😍',
+        'How cute am I? 🥰',
+        'Sweet like Watermelon Sugar 🍉',
+        'Sweater weather🍂',
+        'Hooman, you must gib me treats.',
+        'The cutest brothers! 🥰',
+        'Profile on Point 👌',
+        'Furrfriends forever 🐾♥️',
+        'Dogs are the cutest! 😍',
+        '🥰🥰',
+        'Look at this cutie 😍😍',
+        'Look at this lovely ginger! 😍',
+        'What do you mean by "we\'re out of treats" hooman🤨',
+        'So tiny and cute! 😍😍',
+        'Did you say food? 😋',
+        'Such a cutie! 😍😍',
+        '⚠️ BEWARE of very cute doggo that wants cuddles and kisses! 🧸',
+        'Such a happy boi! 😄',
+        'That goofy smile! 😍😍',
+        'Hello furrfriends!',
+        '💕💕',
+        'Look deep in his eyes! 👀😍',
+        '😴😴',
+        'Puppy love ♥️♥️',
+        'Those eyes 😍😍',
+        'Those eyes!! 😍😍😍',
+        'How adorable is this smile 😍😍',
+        'Look at this small cutie 😍',
+        'Gib me pets hooman!!',
+        'Angel 👼',
+        'What you lookin\' at?',
+        'Look at that cute smile 😍😍',
+        'How contagious is this cute smile!! 😍',
+        'Hope this cute picture made you smile! 😍',
+        'Is it too late for tongue out Tuesday?',
+        'Look at those eyes 😍',
+        'More pets please! 🥰',
+        'Those blue eyes 😍😍',
+        'Yes! More belly rubs 😄',
+        'Yes, 10 pawtreats please 😋',
+        'Double tap if this smile is contagious 🥰',
+        'What do you mean we don’t get a vacation from our vacation? 😰',
+        'That perfect face 😍',
+        'Can I plz come out for pets and treats? 🥺',
+        'Brother and sister love 🥰',
+        'So photogenic 😍',
+      ],
+    },
+    caption: 'credited',
+    hashtagsKeywords: ['dogs'],
   },
 }
 
@@ -87,6 +166,8 @@ const generatePost = async (category, duplicatesToAvoid) => {
 
   let {
     subreddits,
+    sorting = 'hot', // best, hot, new, random, rising, top*, controversial*
+    removeTitle = null,
     excludeTitle = null,
     requireFlairs = null,
     excludeFlairs = null,
@@ -101,8 +182,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     caption = { type: caption }
 
   let subreddit = subreddits[Math.floor(Math.random() * subreddits.length)]
-  let sorting = 'hot' // best, hot, new, random, rising, top*, controversial*
-  let time = 'week' // * = hour, day, week, month, year, all
+  let time = 'day' // * = hour, day, week, month, year, all
 
   let res = await requestJson(`https://www.reddit.com/r/${subreddit}/${sorting}.json?raw_json=1&count=0&limit=75&t=${time}`, {
     headers: {
@@ -116,8 +196,10 @@ const generatePost = async (category, duplicatesToAvoid) => {
 
     if (duplicatesToAvoid.some(duplicate => duplicate.id === data.id)) continue
 
-    if (categories.global.excludeTitle.test(data.title)) continue
-    if (excludeTitle && excludeTitle.test(data.title)) continue
+    let title = data.title
+    if (categories.global.excludeTitle.test(title)) continue
+    if (removeTitle) title = title.replace(removeTitle, '')
+    if (excludeTitle && excludeTitle.test(title)) continue
     if (excludeFlairs && excludeFlairs.includes(data.link_flair_text)) continue
     if (requireFlairs && !requireFlairs.includes(data.link_flair_text)) continue
     let sourceSize = data.preview?.images?.[0].source || { width: 1, height: 1 }
@@ -130,7 +212,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     if (caption.type === 'random') {
       postCaption.push(caption.options[Math.floor(Math.random() * caption.options.length)])
     } else {
-      postCaption.push(data.title.trim())
+      postCaption.push(title.trim())
     }
 
     let hashtags = []
