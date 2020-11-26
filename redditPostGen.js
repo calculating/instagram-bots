@@ -69,7 +69,7 @@ const categories = {
     subreddits: ['AmongUs', 'AmongUsMemes'],
     excludeTitle: /\b(i|[wm]e|us)\b/i,
     requireFlairs: ['Humor', 'Meme', 'OC Meme'],
-    caption: 'credited',
+    caption: { type: 'title', credited: true },
     middleText: '*\n*\nFollow @mongus_city for fresh memes!\n\n🔎\nYour remaining tasks:\n✅Double Tap ⏫\n✅Upload comment data 💬\n✅Tag a friend 🏷️\n〰️〰️〰️\n*\n*',
     hashtagsList: '#amongus #amongusmeme #amongusgame #amongusart #amongusmemes #amongusespañol #amongusfanart #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus #amonguscosplay #amongusgreen #amonguspink #amongusorange #amongusyellow #amongus #amongusfunny #amonguswhite #amongusmemes #amongusmeme #amonguscomic #amongusfunny #amongusgameplay #amongusvideos #innersloth #redsus #impostor #meme #memes #funny #dankmemes #humor #amongus #shitpost #amongusgame #amongusmeme #amongusmemes #amongusfanart #gaming #astronauts #crew #imposter #meme #mobile #gamememe #crewmates #multiplayer #multiplayergame #steamgame #steamgames #amongusart #amongusgameplay #amongusfunny #amongusmobile #amongusimposter #tasks #gamermeme #innersloth #us #vent #sus'.split(' '),
   },
@@ -77,7 +77,7 @@ const categories = {
     subreddits: ['EarthPorn'],
     removeTitle: /\[[^\]]*\][^]*$/,
     excludeTitle: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
-    caption: 'credited',
+    caption: { type: 'title', credited: true },
     middleText: '\nWould you go here?\nFollow us @just_wilderness_places\n',
     hashtagsKeywords: ['nature', 'travel'],
   },
@@ -153,8 +153,8 @@ const categories = {
         'Brother and sister love 🥰',
         'So photogenic 😍',
       ],
+      credited: true,
     },
-    caption: 'credited',
     hashtagsKeywords: ['dogs'],
   },
 }
@@ -252,7 +252,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
 
     if (middleText)
       postCaption.push(middleText)
-    if (caption.type === 'credited' && data.author !== '[deleted]')
+    if (caption.credited && data.author !== '[deleted]')
       postCaption.push(`Credit: ${data.author}`)
     if (hashtags.length > 0)
       postCaption.push(hashtags.join(' '))
