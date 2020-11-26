@@ -78,7 +78,7 @@ const categories = {
     removeTitle: /\[[^\]]*\][^]*$/,
     excludeTitle: /\b(i|you|[wmh]e|us|him|she|her|it|the[ym])\b/i,
     caption: { type: 'title', credited: true },
-    middleText: '\nWould you go here?\nFollow us @just_wilderness_places\n',
+    middleText: '\nWould you go here?\nFollow us @just_wilderness_places!\n',
     hashtagsKeywords: ['nature', 'travel'],
   },
   dogs: {
@@ -155,6 +155,7 @@ const categories = {
       ],
       credited: true,
     },
+    middleText: '\nfollow @floof_daily!\nfollow @floof_daily!\n',
     hashtagsKeywords: ['dogs'],
   },
 }
