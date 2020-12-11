@@ -464,6 +464,17 @@ const createApiConnection = ws => {
             break
         }
 
+      case 'uncropped':
+        account.config = account.config || {}
+        switch (args.shift()) {
+          case 'enable':
+            account.config.expand = true
+            break
+          case 'disable':
+            account.config.expand = false
+            break
+        }
+
       case 'skipWait':
       case 'now':
         skipWait() // TODO: debug command?
@@ -481,8 +492,7 @@ const createApiConnection = ws => {
           'queue clear                             Remove all posts from the queue',
           '',
           'postGen                                 View the current post generation config',
-          'postGen enable                          Enable automatic post generation',
-          'postGen disable                         Disable automatic post generation',
+          'postGen enable (or disable)             Enable or disable automatic post generation',
           'postGen set queueMax <number>           Set the maximum number of posts that the',
           '                                        queue can have before generation stops',
           'postGen set category <category>         Set the category of posts to generate',
@@ -491,11 +501,13 @@ const createApiConnection = ws => {
           '                "pg schedule 10:00-10:30 14:30-15:00"',
           '',
           'postRecycle                             View the current post recycling config',
-          'postRecycle enable                      Enable automatic post recycling',
-          'postRecycle disable                     Disable automatic post recycling',
+          'postRecycle enable (or disable)         Enable or disable automatic post recycling',
           'postRecycle set queueMax <number>       Set the maximum number of posts that the',
           '                                        queue can have before recycling stops',
           'postRecycle set interval <hours>        Set the time between recycles in hours',
+          '',
+          'headless enable (or disable)            Prevent the Instagram window from being shown',
+          'uncropped enable (or disable)           Prevent posts from being cropped',
           '',
           'Note: Arguments containing spaces or quotation marks must be put in quotes.',
           '      You can put "q" instead of "queue", "pg" instead of "postGen",',
@@ -584,7 +596,7 @@ let run = async () => {
       let post = account.posts[0]
       if (post && post.time <= Date.now()) {
         account.posts.shift()
-        await puppet.createPost(post.url, post.caption)
+        await puppet.createPost(post.url, post.caption, account.config.expand || false)
       }
     } catch (err) {
       console.log(err)
