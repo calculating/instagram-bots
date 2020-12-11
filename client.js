@@ -196,7 +196,7 @@ const Puppet = class {
     await this.tap('//button[contains(., "Save Info")]', 'network', { required: false })
   }
 
-  async createPost(src, caption) {
+  async createPost(src, caption, expand) {
     let localPath = path.join(__dirname, 'data', `tmp-file${path.extname(src)}`)
     await downloadFile(src, localPath)
 
@@ -208,7 +208,8 @@ const Puppet = class {
     await fileChooser.accept([localPath])
     await delay('fast')
 
-    await this.tap('//button/span[text()="Expand"]', 'network')
+    if (expand)
+      await this.tap('//button/span[text()="Expand"]', 'network', { required: false })
     await this.tap('//div/button[text()="Next"]', 'network')
 
     if (caption)
