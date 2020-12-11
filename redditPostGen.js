@@ -158,6 +158,12 @@ const categories = {
     middleText: '\nfollow @floof_daily!\nfollow @floof_daily!\n',
     hashtagsKeywords: ['dogs'],
   },
+  starWars: {
+    subreddits: ['PrequelMemes', 'SequelMemes'],
+    excludeTitle: /\b(i|[wm]e|us)\b/i,
+    caption: { type: 'title', credited: true },
+    hashtagsKeywords: ['starwars'],
+  },
 }
 
 const generatePost = async (category, duplicatesToAvoid) => {
