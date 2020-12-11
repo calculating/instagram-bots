@@ -208,6 +208,7 @@ const Puppet = class {
     await fileChooser.accept([localPath])
     await delay('fast')
 
+    await this.tap('//button/span[text()="Expand"]', 'network')
     await this.tap('//div/button[text()="Next"]', 'network')
 
     if (caption)
