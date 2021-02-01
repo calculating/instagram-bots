@@ -16,7 +16,7 @@ const intoFileUrl = async (url, { image, video }) => {
     if (url.startsWith('https://v.redd.it/')) {
       let urls = null
       try {
-        let playlistFile = await request(url + '/DASHPlaylist.mpd')
+        let playlistFile = await request(`${url}/DASHPlaylist.mpd`)
         urls = playlistFile.toString().match(/(?<=<BaseURL>)DASH_[0-9]+\.mp4(?=<\/BaseURL>)/g)
         if (!urls)
           throw new Error('URL not found in playlist')
@@ -164,6 +164,14 @@ const categories = {
     caption: { type: 'title', credited: true },
     hashtagsKeywords: ['starwars'],
   },
+  scienceMemes: {
+    subreddits: ['physicsmemes', 'mathmemes', '6thForm', 'ScienceHumour'],
+    excludeTitle: /\b(i|[wm]e|us)\b/i,
+    excludeFlairs: ['🍞 BREAD', '📰 NEWS', 'OTHER', '💬 DISCUSSION', '🎓 UNI / UCAS"'],
+    caption: { type: 'title', credited: true },
+    hashtagsList: '#physicsmemes #physics #physicist #college #university #student #chemistry #biology #stem #scientist #science #sciencememes #memes #meme #funny #quantum #universe #meme #memes #astronomy #stars #space #atom #physicist'.split(' '),
+    maxHashtags: 5,
+  },
 }
 
 const generatePost = async (category, duplicatesToAvoid) => {
@@ -183,6 +191,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     caption = 'title',
     hashtagsList = [],
     hashtagsKeywords = [],
+    maxHashtags = 30,
   } = categoryData
 
   if (typeof caption === 'string')
@@ -223,7 +232,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     }
 
     let hashtags = []
-    let hashtagsAddFrom = (from, max, maxTotal = 30, shuffleMode = 'excludeFirst') => {
+    let hashtagsAddFrom = (from, max, maxTotal, shuffleMode = 'excludeFirst') => {
       from = from.slice()
       let added = 0
       while (added < max && hashtags.length < maxTotal) {
@@ -238,7 +247,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
     }
 
     if (hashtagsList.length > 0) {
-      hashtagsAddFrom(hashtagsList, hashtagsKeywords.length === 0 ? 30 : 20, 30)
+      hashtagsAddFrom(hashtagsList, hashtagsKeywords.length === 0 ? 30 : 20, maxHashtags)
     }
 
     let maxPerKeyword = Math.ceil((30 - hashtags.length) / hashtagsKeywords.length)
@@ -254,7 +263,7 @@ const generatePost = async (category, duplicatesToAvoid) => {
         // hashtagsGen.topHashtags(keyword).catch(ignoreError),
       ]))
 
-      hashtagsAddFrom([`#${keyword}`, ...results], maxPerKeyword, 30)
+      hashtagsAddFrom([`#${keyword}`, ...results], maxPerKeyword, maxHashtags)
     }
 
     if (middleText)
