@@ -162,8 +162,8 @@ const Puppet = class {
     await this.tap('//span/button[text()="Follow" or text()="Follow Back"]', 'network', { required: false })
   }
 
-  async createPost(path, caption) {
-    return this.cmd('createPost', path, caption)
+  async createPost(path, caption, expand = false) {
+    return this.cmd('createPost', path, caption, expand)
   }
 
   async cyclePost() {
