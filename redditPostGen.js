@@ -166,7 +166,7 @@ const categories = {
   },
   scienceMemes: {
     subreddits: ['physicsmemes', 'mathmemes', '6thForm', 'ScienceHumour'],
-    excludeTitle: /\b(i|[wm]e|us)\b/i,
+    excludeTitle: /\b(i|[wm]e|us|oc)\b/i,
     excludeFlairs: ['🍞 BREAD', '📰 NEWS', 'OTHER', '💬 DISCUSSION', '🎓 UNI / UCAS"'],
     caption: { type: 'title', credited: true },
     hashtagsList: '#physicsmemes #physics #physicist #college #university #student #chemistry #biology #stem #scientist #science #sciencememes #memes #meme #funny #quantum #universe #meme #memes #astronomy #stars #space #atom #physicist'.split(' '),
